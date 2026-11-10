@@ -507,10 +507,14 @@ function pickLogo(n) {
   (n.tags || []).forEach(t => rules.forEach(([k, re]) => { if (re.test(t) && !found.includes(k)) found.push(k); }));
   return n.cat === 'games' && found.length > 1 ? null : found[0] || null;
 }
+// rss2json gives times in UTC without saying so; read them as UTC, not local time.
+function newsTime(n) { const s = (n.date || '').replace(' ', 'T'); return Date.parse(/Z$|[+-]\d\d:?\d\d$/.test(s) ? s : s + 'Z'); }
+const DAY_MS = 24 * 60 * 60 * 1000;
 function newsScreen() {
   const tab = ui.newsTab;
   const items = [], seen = new Map();
-  S.news.items.filter(n => tab === 'all' || n.cat === tab).forEach(n => {
+  const inTab = S.news.items.filter(n => tab === 'all' || n.cat === tab);
+  inTab.filter(n => Date.now() - newsTime(n) < DAY_MS).forEach(n => {
     const key = n.title.trim().toLowerCase(), prev = seen.get(key);
     if (!prev) { const copy = { ...n }; seen.set(key, copy); items.push(copy); }
     else if (!prev.source.split(' & ').includes(n.source)) prev.source += ' & ' + n.source;
@@ -518,12 +522,12 @@ function newsScreen() {
   const tabs = [['all', 'All'], ['wrestling', 'Wrestling'], ['games', 'Games'], ['baseball', 'Baseball']];
   const CHIP = { wrestling: ['WWE/AEW', 'background:#FEEFE3;color:#B45309'], games: ['GAMES', 'background:#E8F0FE;color:#1A73E8'], baseball: ['MLB', 'background:#E6F4EA;color:#188038'] };
   let body;
-  if (items.length) body = items.slice(0, 30).map(n => `<a class="row" href="${esc(n.link)}" target="_blank" rel="noopener">
+  if (items.length) body = items.map(n => `<a class="row" href="${esc(n.link)}" target="_blank" rel="noopener">
       ${(lg => lg ? `<div class="chip" style="background:${lg[1]}!important;padding:${lg[2]}px;box-shadow:inset 0 0 0 1px #E8EAED"><img src="${lg[0]}" alt="" style="width:100%;height:100%;object-fit:contain"></div>`
         : `<div class="chip" style="${(CHIP[n.cat] || CHIP.games)[1]}">${(CHIP[n.cat] || CHIP.games)[0]}</div>`)(LOGOS[newsLogo(n)])}
-      <div class="rt"><b style="line-height:1.3">${esc(n.title)}</b><small>${esc(n.source)}${n.date ? ' · ' + timeAgo(n.date) : ''}</small></div></a>`).join('');
+      <div class="rt"><b style="line-height:1.3">${esc(n.title)}</b><small>${esc(n.source)}${n.date ? ' · ' + timeAgo(new Date(newsTime(n)).toISOString()) : ''}</small></div></a>`).join('');
   else if (ui.newsLoading) body = '<div class="empty">Loading headlines…</div>';
-  else body = `<div class="empty">${ui.newsErr ? 'Couldn’t load headlines right now. You can open the sites directly:' : 'No headlines yet.'}</div>
+  else body = `<div class="empty">${ui.newsErr ? 'Couldn’t load headlines right now. You can open the sites directly:' : inTab.length ? 'Nothing new in the last 24 hours. You can open the sites directly:' : 'No headlines yet.'}</div>
     <div class="wrap">${FEEDS.filter(f => tab === 'all' || f.cat === tab).map(f => `<a class="tag" style="display:flex;align-items:center;text-decoration:none" href="${f.site}" target="_blank" rel="noopener">${f.source}</a>`).join('')}</div>`;
   return `<div class="scroll">
     <header class="head"><div><div class="sub">${S.news.at ? 'Updated ' + timeAgo(new Date(S.news.at).toISOString()) : 'Wrestling · Games · Baseball'}</div><h1>News</h1></div>
@@ -556,7 +560,7 @@ async function loadNews(force) {
   // A source that failed this time keeps the headlines it had before.
   const failed = FEEDS.filter((f, i) => results[i].status === 'rejected').map(f => f.source);
   const items = fresh.concat(S.news.items.filter(n => failed.includes(n.source)));
-  items.sort((a, b) => new Date((b.date || '').replace(' ', 'T')) - new Date((a.date || '').replace(' ', 'T')));
+  items.sort((a, b) => newsTime(b) - newsTime(a));
   if (fresh.length) { S.news = { items: items.slice(0, FEEDS.length * 10), at: Date.now() }; save(); } else ui.newsErr = true;
   ui.newsLoading = false; render();
 }
