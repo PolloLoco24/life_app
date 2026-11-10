@@ -22,9 +22,11 @@ button,input{font-family:inherit}
 #app{height:100vh;height:100dvh;max-width:480px;margin:0 auto;display:flex;flex-direction:column;--accent:#202124;--soft:#E8EAED;--btn:#202124;--btnInk:#fff}
 .scroll{flex:1 1 0;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:calc(env(safe-area-inset-top) + 28px) 20px 16px;display:flex;flex-direction:column;gap:18px}
 .bottom{padding:0 20px 10px}
-nav.tabs{margin:0 12px calc(env(safe-area-inset-bottom) + 10px);background:#fff;border-radius:26px;padding:6px;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:2px;box-shadow:0 4px 16px rgba(60,64,67,.10);flex-shrink:0}
-nav.tabs a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:54px;border-radius:20px;font-size:11px;font-weight:800;color:#5F6368;text-decoration:none}
-nav.tabs a.on{background:var(--soft);color:var(--accent)}
+nav.tabs{margin:0 12px calc(env(safe-area-inset-bottom) + 10px);background:#fff;border-radius:26px;padding:6px;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:2px;box-shadow:0 4px 16px rgba(60,64,67,.10);flex-shrink:0;position:relative}
+nav.tabs a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:54px;border-radius:20px;font-size:11px;font-weight:800;color:#5F6368;text-decoration:none;position:relative;z-index:1;transition:color .3s}
+nav.tabs a.on{color:var(--accent)}
+nav.tabs .glide{position:absolute;top:6px;bottom:6px;left:6px;width:calc((100% - 22px) / 6);border-radius:20px;background:var(--soft);transform:translateX(calc(var(--i) * (100% + 2px)));transition:transform .35s cubic-bezier(.3,.7,.2,1)}
+@media (prefers-reduced-motion:reduce){nav.tabs .glide,nav.tabs a{transition:none}}
 .head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
 .sub{font-size:14px;font-weight:600;color:#5F6368}
 h1{margin:0;font-size:30px;font-weight:800;line-height:1.15}
@@ -565,9 +567,14 @@ function render() {
   app.style.background = (sec.glow || `radial-gradient(130% 300px at 50% 0%, rgba(${sec.rgb},${sec.a}), rgba(${sec.rgb},0) 75%)`) + ', #F1F3F4';
   document.title = sec.title;
   const screen = { planner, tasks: tasksScreen, work: workScreen, gym: gymScreen, school: schoolScreen, news: newsScreen }[r]();
-  const nav = `<nav class="tabs" aria-label="Sections">${TAB_ORDER.map(k => `<a href="#${k}" class="${k === r ? 'on' : ''}"${k === r ? ' aria-current="page"' : ''}>${svg(NAV_ICONS[k], 22, 2)}${SECTIONS[k].title}</a>`).join('')}</nav>`;
+  const oldPill = app.querySelector('nav.tabs .glide');
+  const fromX = oldPill ? new DOMMatrix(getComputedStyle(oldPill).transform).m41 : null;
+  const nav = `<nav class="tabs" aria-label="Sections"><span class="glide" style="--i:${TAB_ORDER.indexOf(r)}"></span>${TAB_ORDER.map(k => `<a href="#${k}" class="${k === r ? 'on' : ''}"${k === r ? ' aria-current="page"' : ''}>${svg(NAV_ICONS[k], 22, 2)}${SECTIONS[k].title}</a>`).join('')}</nav>`;
   const toast = ui.undo ? `<div class="toast" role="status">Task deleted<button type="button" data-a="undo">Undo</button></div>` : '';
   app.innerHTML = screen + nav + toast;
+  // The nav is rebuilt every render, so start the new pill where the old one was and let it slide.
+  const pill = app.querySelector('nav.tabs .glide');
+  if (fromX !== null) { pill.style.transform = `translateX(${fromX}px)`; pill.getBoundingClientRect(); pill.style.transform = ''; }
   const sc = app.querySelector('.scroll'); if (sc && keepScroll) sc.scrollTop = keepScroll;
   render._route = r;
   if (r === 'news') loadNews(false);
