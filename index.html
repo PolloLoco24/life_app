@@ -199,6 +199,7 @@ function defaults() {
       { code: 'D430', name: 'Intro to InfoSec', pct: 0 }
     ] },
     weights: {},
+    plans: Object.fromEntries(Object.entries(PLANS).map(([k, p]) => [k, p.list.map(e => e.slice())])),
     news: { items: [], at: 0 }
   };
 }
@@ -214,7 +215,7 @@ const ui = {
   plannerSel: null, plannerMonth: null, filter: 'all', filterOpen: false, monthOpen: false, pickY: null,
   sheet: false, draft: '', tag: 'tasks', workout: null, pickDate: null, pickMonth: null,
   weekStart: null, workOpen: null, workStart: '09:00', workEnd: '17:00',
-  split: null, gymView: 'workout', gymOpen: null, gymDraft: '', chartEx: {},
+  split: null, gymView: 'workout', gymOpen: null, gymDraft: '', gymStart: '', exName: '', addingEx: false, newEx: '', chartEx: null,
   schoolOpen: null, addingClass: false, newCode: '', newName: '',
   newsTab: 'all', newsLoading: false, newsErr: false,
   undo: null
@@ -368,20 +369,39 @@ function workScreen() {
 }
 
 function curWeight(ex) { const h = S.weights[ex]; return h && h.length ? h[h.length - 1].w : null; }
+// One point per Sunday–Saturday week, from the first logged week to this week; empty weeks repeat the week before.
+function weeklyWeights(ex) {
+  const h = (S.weights[ex] || []).slice().sort((a, b) => a.date.localeCompare(b.date));
+  if (!h.length) return [];
+  const byWeek = {}; h.forEach(p => { byWeek[weekStartOf(p.date)] = p.w; });
+  const out = [], now = weekStartOf(todayStr());
+  let w = null, n = 1;
+  for (let s = weekStartOf(h[0].date); s <= now; s = addDays(s, 7), n++) {
+    const logged = s in byWeek; if (logged) w = byWeek[s];
+    out.push({ week: n, start: s, w, logged });
+  }
+  return out;
+}
 function nextWorkout() {
   const t = todayStr();
   return S.tasks.filter(x => x.cat === 'gym' && x.workout && x.date >= t && !x.done).sort((a, b) => a.date.localeCompare(b.date))[0];
 }
+function curSplit() { const nx = nextWorkout(); return ui.split || (nx ? nx.workout : 'push'); }
 function gymScreen() {
   const nx = nextWorkout();
-  const split = ui.split || (nx ? nx.workout : 'push');
-  const plan = PLANS[split];
-  const seg = `<div class="seg" style="grid-template-columns:repeat(3,minmax(0,1fr))">${Object.keys(WK).map(w => `<button type="button" class="${w === split ? 'on' : ''}" data-a="setSplit" data-v="${w}" aria-pressed="${w === split}">${WK[w]}</button>`).join('')}</div>`;
-  if (ui.gymView === 'progress') {
-    const ex = ui.chartEx[split] || plan.list[0][0];
-    const hist = (S.weights[ex] || []).slice(-8);
+  const split = curSplit();
+  const plan = { focus: PLANS[split].focus, list: S.plans[split] };
+  const prog = ui.gymView === 'progress';
+  const seg = `<div class="seg" style="grid-template-columns:repeat(4,minmax(0,1fr))">${Object.keys(WK).map(w => { const on = !prog && w === split; return `<button type="button" class="${on ? 'on' : ''}" data-a="setSplit" data-v="${w}" aria-pressed="${on}">${WK[w]}</button>`; }).join('')}<button type="button" class="${prog ? 'on' : ''}" data-a="gymView" data-v="progress" aria-pressed="${prog}">Progress</button></div>`;
+  const header = `<header class="head"><div><div class="sub">${nx ? 'Next: ' + WK[nx.workout] + ' day · ' + dayLabel(nx.date) : 'No workouts planned — add one in Tasks'}</div><h1>Gym</h1></div></header>`;
+  if (prog) {
+    const groups = Object.keys(WK).map(w => [w, S.plans[w].map(e => e[0])]).filter(g => g[1].length);
+    const all = groups.flatMap(g => g[1]);
+    const ex = all.includes(ui.chartEx) ? ui.chartEx : (plan.list[0] || [])[0] || all[0];
+    const hist = weeklyWeights(ex).slice(-8);
     let chart;
-    if (!hist.length) chart = `<div class="empty">No weights saved for ${esc(ex)} yet. Save one on the workout screen and it'll show up here.</div>`;
+    if (!ex) chart = `<div class="empty">No exercises yet.</div>`;
+    else if (!hist.length) chart = `<div class="empty">No weights saved for ${esc(ex)} yet. Save one on the workout screen and it'll show up here.</div>`;
     else {
       const v = hist.map(p => p.w), lo = Math.min(...v) - 5, hi = Math.max(...v) + 5;
       const pts = v.map((w, i) => [hist.length === 1 ? 155 : 12 + i * (286 / (hist.length - 1)), 150 - (w - lo) / (hi - lo) * 130]);
@@ -393,32 +413,39 @@ function gymScreen() {
           ${hist.length > 1 ? `<polygon points="${line} ${last[0].toFixed(1)},150 ${pts[0][0].toFixed(1)},150" fill="#D93025" fill-opacity=".10"/><polyline points="${line}" fill="none" stroke="#D93025" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>` : ''}
           <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="6" fill="#D93025" stroke="#fff" stroke-width="3"/>
         </svg>
-        <div style="display:grid;grid-template-columns:repeat(${hist.length},minmax(0,1fr));text-align:center;font-size:11px;font-weight:700;color:#5F6368">${hist.map(p => `<div>${shortDate(p.date)}</div>`).join('')}</div>`;
+        <div style="display:grid;grid-template-columns:repeat(${hist.length},minmax(0,1fr));text-align:center;font-size:10px;font-weight:700;color:#5F6368">${hist.map(p => `<div style="${p.logged ? '' : 'color:#9AA0A6'}"><b style="display:block;font-size:11px">Wk ${p.week}</b>${shortDate(p.start)}</div>`).join('')}</div>
+        <div class="note">Weeks run Sunday–Saturday. Your last save each week counts, and weeks you skip keep the week before's weight (shown in grey).</div>`;
     }
     return `<div class="scroll">
-      <header><button type="button" class="monthbtn" style="font-size:14px;color:#5F6368;min-height:32px" data-a="gymView" data-v="workout">${svg('<path d="M15 6l-6 6 6 6"/>', 16)}Workouts</button><h1>Progress</h1></header>
+      ${header}
       ${seg}
-      <div class="wrap">${plan.list.map(([n]) => `<button type="button" class="tag${n === ex ? ' on' : ''}" data-a="chartEx" data-v="${esc(n)}" aria-pressed="${n === ex}">${esc(n)}</button>`).join('')}</div>
       <section class="card">${chart}</section>
+      ${groups.map(([w, names]) => `<div style="display:flex;flex-direction:column;gap:8px"><div class="lbl">${WK[w]}</div>
+        <div class="wrap">${names.map(n => `<button type="button" class="tag${n === ex ? ' on' : ''}" data-a="chartEx" data-v="${esc(n)}" aria-pressed="${n === ex}">${esc(n)}</button>`).join('')}</div></div>`).join('')}
     </div>`;
   }
   return `<div class="scroll">
-    <header class="head"><div><div class="sub">${nx ? 'Next: ' + WK[nx.workout] + ' day · ' + dayLabel(nx.date) : 'No workouts planned — add one in Tasks'}</div><h1>Gym</h1></div></header>
+    ${header}
     ${seg}
-    <section class="list"><h2>${plan.focus}</h2>${plan.list.map(([n, sets]) => {
-      const open = ui.gymOpen === n, w = curWeight(n);
-      return `<div class="box"><button type="button" class="hit" data-a="openEx" data-v="${esc(n)}" aria-expanded="${open}">
-        <div class="chip" style="background:#FCE8E6"></div><div class="rt"><b>${esc(n)}</b><small>${sets}</small></div>
+    <section class="list"><h2>${plan.focus}</h2>${plan.list.length ? '' : '<div class="empty">No exercises yet.</div>'}${plan.list.map(([n], i) => {
+      const open = ui.gymOpen === i, w = curWeight(n);
+      return `<div class="box"><button type="button" class="hit" data-a="openEx" data-v="${i}" aria-expanded="${open}">
+        <div class="rt"><b>${esc(n)}</b></div>
         <div style="font-size:16px;font-weight:800;color:#D93025;white-space:nowrap">${w == null ? '—' : w} lb</div></button>
-        ${open ? `<div class="expand"><div class="stepper">
+        ${open ? `<div class="expand">
+          <label class="lbl" for="exn">Name</label><input id="exn" class="field" value="${esc(ui.exName)}" data-bind="exName" autocomplete="off">          <label class="lbl" for="wt">Weight (lb)</label><div class="stepper">
           <button type="button" class="round" data-a="step" data-v="-5" aria-label="Lower 5 pounds">−</button>
-          <label class="sr" for="wt">Weight in pounds</label><input id="wt" class="field" type="number" inputmode="decimal" step="2.5" min="0" value="${esc(ui.gymDraft)}" data-bind="gymDraft">
+          <input id="wt" class="field" type="number" inputmode="decimal" step="2.5" min="0" value="${esc(ui.gymDraft)}" data-bind="gymDraft">
           <button type="button" class="round" data-a="step" data-v="5" aria-label="Raise 5 pounds">+</button></div>
-          <button type="button" class="btn main" data-a="saveWeight" data-v="${esc(n)}">Save weight</button></div>` : ''}
+          <div style="display:flex;gap:8px"><button type="button" class="btn main grow" data-a="saveEx" data-v="${i}">Save</button><button type="button" class="btn soft" data-a="delEx" data-v="${i}">Delete</button></div></div>` : ''}
       </div>`;
-    }).join('')}</section>
-  </div>
-  <div class="bottom"><button type="button" class="btn dark" data-a="gymView" data-v="progress">${svg('<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>', 20)}Progress</button></div>`;
+    }).join('')}
+    ${ui.addingEx ? `<section class="card"><h2 style="font-size:16px">Add an exercise</h2>
+      <label class="sr" for="nex">Exercise name</label><input id="nex" class="field" placeholder="Exercise name" value="${esc(ui.newEx)}" data-bind="newEx" autocomplete="off">
+      <div style="display:flex;gap:8px"><button type="button" class="btn main grow" data-a="addEx">Add exercise</button><button type="button" class="btn soft" data-a="cancelEx">Cancel</button></div></section>`
+      : `<button type="button" class="btn soft" data-a="startEx">+ Add an exercise</button>`}
+    </section>
+  </div>`;
 }
 
 function schoolScreen() {
@@ -521,24 +548,52 @@ const A = {
     save(); ui.sheet = false; ui.draft = ''; ui.workout = null;
   },
   toggleTask: v => { const x = S.tasks.find(t => t.id === v); if (x) { x.done = !x.done; save(); } },
-  delTask: v => { const i = S.tasks.findIndex(t => t.id === v); if (i > -1) { ui.undo = { task: S.tasks[i], at: i }; S.tasks.splice(i, 1); save(); clearTimeout(A._u); A._u = setTimeout(() => { ui.undo = null; render(); }, 5000); } },
-  undo: () => { if (ui.undo) { S.tasks.splice(ui.undo.at, 0, ui.undo.task); ui.undo = null; save(); } },
+  delTask: v => { const i = S.tasks.findIndex(t => t.id === v); if (i > -1) { ui.undo = { task: S.tasks[i], at: i }; S.tasks.splice(i, 1); save(); A._undoTimer(); } },
+  undo: () => {
+    if (!ui.undo) return;
+    if (ui.undo.ex) S.plans[ui.undo.split].splice(ui.undo.at, 0, ui.undo.ex);
+    else S.tasks.splice(ui.undo.at, 0, ui.undo.task);
+    ui.undo = null; save();
+  },
+  _undoTimer: () => { clearTimeout(A._u); A._u = setTimeout(() => { ui.undo = null; render(); }, 5000); },
 
   week: v => { ui.weekStart = addDays(ui.weekStart || weekStartOf(todayStr()), Number(v)); ui.workOpen = null; },
   openDay: v => { if (ui.workOpen === v) { ui.workOpen = null; return; } ui.workOpen = v; const s = S.shifts[v]; ui.workStart = s ? s.start : '09:00'; ui.workEnd = s ? s.end : '17:00'; },
   saveShift: v => { if (ui.workStart && ui.workEnd) { S.shifts[v] = { start: ui.workStart, end: ui.workEnd }; save(); } ui.workOpen = null; },
   clearShift: v => { delete S.shifts[v]; save(); ui.workOpen = null; },
 
-  setSplit: v => { ui.split = v; ui.gymOpen = null; },
-  gymView: v => { ui.gymView = v; ui.gymOpen = null; },
-  chartEx: v => { const nx = nextWorkout(); ui.chartEx[ui.split || (nx ? nx.workout : 'push')] = v; },
-  openEx: v => { if (ui.gymOpen === v) { ui.gymOpen = null; return; } ui.gymOpen = v; const w = curWeight(v); ui.gymDraft = w == null ? '' : String(w); },
+  setSplit: v => { ui.split = v; ui.gymView = 'workout'; ui.gymOpen = null; ui.addingEx = false; },
+  gymView: v => { ui.gymView = v; ui.gymOpen = null; ui.addingEx = false; },
+  chartEx: v => { ui.chartEx = v; },
+  startEx: () => { ui.addingEx = true; ui.newEx = ''; ui.gymOpen = null; setTimeout(() => { const el = document.getElementById('nex'); if (el) el.focus(); }, 50); },
+  cancelEx: () => { ui.addingEx = false; },
+  addEx: () => { const n = ui.newEx.trim(); if (!n) return; S.plans[curSplit()].push([n, '']); ui.addingEx = false; save(); },
+  openEx: v => {
+    const i = Number(v); ui.addingEx = false; if (ui.gymOpen === i) { ui.gymOpen = null; return; }
+    const n = S.plans[curSplit()][i][0], w = curWeight(n);
+    ui.gymOpen = i; ui.exName = n; ui.gymDraft = ui.gymStart = w == null ? '' : String(w);
+  },
   step: v => { ui.gymDraft = String(Math.max(0, (Number(ui.gymDraft) || 0) + Number(v))); },
-  saveWeight: v => {
-    const w = Number(ui.gymDraft); if (!ui.gymDraft || isNaN(w)) return;
-    const h = S.weights[v] = S.weights[v] || []; const t = todayStr();
-    if (h.length && h[h.length - 1].date === t) h[h.length - 1].w = w; else h.push({ date: t, w });
+  saveEx: v => {
+    const ex = S.plans[curSplit()][Number(v)], old = ex[0];
+    const name = ui.exName.trim() || old;
+    if (name !== old && S.weights[old]) {
+      // Carry the weight history over to the new name; keep the old key if another workout still uses it.
+      S.weights[name] = (S.weights[name] || []).concat(S.weights[old]).sort((a, b) => a.date.localeCompare(b.date));
+      if (!Object.values(S.plans).some(l => l.some(e => e !== ex && e[0] === old))) delete S.weights[old];
+    }
+    ex[0] = name;
+    const w = Number(ui.gymDraft);
+    if (ui.gymDraft !== ui.gymStart && ui.gymDraft !== '' && !isNaN(w)) {
+      const h = S.weights[name] = S.weights[name] || []; const t = todayStr(), last = h[h.length - 1];
+      if (last && weekStartOf(last.date) === weekStartOf(t)) { last.w = w; last.date = t; } else h.push({ date: t, w });
+    }
     save(); ui.gymOpen = null;
+  },
+  delEx: v => {
+    const split = curSplit(), at = Number(v);
+    ui.undo = { ex: S.plans[split][at], split, at }; S.plans[split].splice(at, 1);
+    save(); ui.gymOpen = null; A._undoTimer();
   },
 
   openClass: v => { ui.schoolOpen = ui.schoolOpen === Number(v) ? null : Number(v); },
@@ -570,7 +625,7 @@ function render() {
   const oldPill = app.querySelector('nav.tabs .glide');
   const fromX = oldPill ? new DOMMatrix(getComputedStyle(oldPill).transform).m41 : null;
   const nav = `<nav class="tabs" aria-label="Sections"><span class="glide" style="--i:${TAB_ORDER.indexOf(r)}"></span>${TAB_ORDER.map(k => `<a href="#${k}" class="${k === r ? 'on' : ''}"${k === r ? ' aria-current="page"' : ''}>${svg(NAV_ICONS[k], 22, 2)}${SECTIONS[k].title}</a>`).join('')}</nav>`;
-  const toast = ui.undo ? `<div class="toast" role="status">Task deleted<button type="button" data-a="undo">Undo</button></div>` : '';
+  const toast = ui.undo ? `<div class="toast" role="status">${ui.undo.ex ? 'Exercise' : 'Task'} deleted<button type="button" data-a="undo">Undo</button></div>` : '';
   app.innerHTML = screen + nav + toast;
   // The nav is rebuilt every render, so start the new pill where the old one was and let it slide.
   const pill = app.querySelector('nav.tabs .glide');
@@ -590,7 +645,11 @@ document.addEventListener('input', e => {
   if (el.dataset.change === 'classPct') { const l = document.getElementById('prl'); if (l) l.textContent = el.value; }
 });
 document.addEventListener('change', e => { const el = e.target; if (el.dataset.change && CHANGE[el.dataset.change]) { CHANGE[el.dataset.change](el); render(); } });
-document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'draft' && !(ui.tag === 'gym' && !ui.workout)) { A.addTask(); render(); } });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  if (e.target.id === 'draft' && !(ui.tag === 'gym' && !ui.workout)) { A.addTask(); render(); }
+  if (e.target.id === 'nex') { A.addEx(); render(); }
+});
 window.addEventListener('hashchange', () => { ui.filterOpen = ui.monthOpen = false; render(); window.scrollTo(0, 0); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
 render();
