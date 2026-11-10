@@ -534,6 +534,8 @@ function newsScreen() {
     <header class="head"><div><div class="sub">${S.news.at ? 'Updated ' + timeAgo(new Date(S.news.at).toISOString()) : 'Wrestling · Games · Baseball'}</div><h1>News</h1></div>
       <button type="button" class="iconbtn" style="background:#fff;margin-bottom:2px" data-a="refreshNews" aria-label="Refresh headlines">${svg('<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>', 18)}</button></header>
     <div class="seg" style="grid-template-columns:repeat(${tabs.length},minmax(0,1fr))">${tabs.map(([id, l]) => `<button type="button" class="${tab === id ? 'on' : ''}" data-a="newsTab" data-v="${id}" aria-pressed="${tab === id}">${l}</button>`).join('')}</div>
+    ${(down => down.length && !ui.newsLoading ? `<div class="note" style="color:#D93025;margin-top:-8px">${down.length} source${down.length === 1 ? '' : 's'} not loading right now: ${down.map(esc).join(', ')}</div>` : '')(
+      FEEDS.filter(f => (tab === 'all' || f.cat === tab) && (S.news.failed || []).includes(f.source)).map(f => f.source))}
     <section class="list">${body}</section>
   </div>`;
 }
@@ -563,7 +565,9 @@ async function loadNews(force) {
   const failed = FEEDS.filter((f, i) => results[i].status === 'rejected').map(f => f.source);
   const items = fresh.concat(S.news.items.filter(n => failed.includes(n.source)));
   items.sort((a, b) => newsTime(b) - newsTime(a));
-  if (fresh.length) { S.news = { items: items.slice(0, FEEDS.length * 10), at: Date.now() }; save(); } else ui.newsErr = true;
+  if (fresh.length) S.news = { items: items.slice(0, FEEDS.length * 10), at: Date.now(), failed };
+  else { ui.newsErr = true; S.news.failed = FEEDS.map(f => f.source); }
+  save();
   ui.newsLoading = false; render();
 }
 
