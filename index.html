@@ -104,6 +104,7 @@ input[type=time]{-webkit-appearance:none;appearance:none}
 .tag{min-height:40px;padding:0 14px;border-radius:20px;border:none;background:var(--surface);color:var(--text);font:800 13px Nunito,system-ui,sans-serif;cursor:pointer;box-shadow:0 2px 6px var(--shadow)}
 .tag.on{background:var(--text);color:var(--surface)}
 .note{font-size:13px;font-weight:700;color:var(--text2)}
+.textbtn{min-height:32px;border:none;background:none;padding:0;font:800 14px Nunito,system-ui,sans-serif;color:var(--accent);cursor:pointer}
 a.row{text-decoration:none}
 .toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 96px);transform:translateX(-50%);background:var(--text);color:var(--surface);border-radius:22px;padding:10px 10px 10px 18px;display:flex;align-items:center;gap:12px;font-weight:800;font-size:14px;box-shadow:0 6px 20px rgba(0,0,0,.2);z-index:5}
 .toast button{background:#FBBC05;color:#202124;border:none;border-radius:16px;min-height:36px;padding:0 14px;font:800 14px Nunito,system-ui,sans-serif;cursor:pointer}
@@ -197,6 +198,7 @@ function defaults() {
   return {
     name: 'Rey',
     tasks: [],
+    tags: [],
     shifts: {},
     school: { term: 'WGU · Term 5', termEnd: '2027-04-30', courses: [
       { code: 'D281', name: 'Linux Foundations', pct: 0 },
@@ -220,6 +222,7 @@ if (S.name === 'Ray') { S.name = 'Rey'; save(); }
 /* ---------- screen state (not saved) ---------- */
 const ui = {
   plannerSel: null, plannerMonth: null, filters: [], filterOpen: false, monthOpen: false, pickY: null,
+  taskFilters: [], taskFilterOpen: false, tagsOpen: false, tagForm: null, tagMsg: '',
   sheet: false, editing: null, draft: '', tag: 'tasks', workout: null, emoji: null, repeat: null, pickDate: null, pickMonth: null,
   weekStart: null, workOpen: null, workStart: '09:00', workEnd: '17:00',
   split: null, gymView: 'workout', gymOpen: null, gymDraft: '', gymStart: '', exName: '', addingEx: false, newEx: '', chartEx: null,
@@ -253,11 +256,49 @@ const DARK_SECTIONS = {
   gym: { accent: '#F28B82', soft: 'rgba(242,139,130,.16)' }, school: { accent: '#8AB4F8', soft: 'rgba(138,180,248,.16)' },
   news: { accent: '#FCAD70', soft: 'rgba(252,173,112,.16)' }
 };
-const cat = k => darkMQ.matches ? { ...CATS[k], fg: DARK_CATS[k][0], bg: DARK_CATS[k][1] } : CATS[k];
+// Custom tag colours: [light text, light tint, dark-mode text]
+const TAG_COLORS = {
+  purple: ['#8430CE', '#F3E8FD', '#D7AEFB'], teal: ['#007B83', '#E4F7FB', '#78D9EC'], pink: ['#C2185B', '#FCE4EC', '#FF8BCB'],
+  indigo: ['#3949AB', '#E8EAF6', '#A8B2E8'], orange: ['#C26401', '#FEEFE3', '#FCAD70'], brown: ['#795548', '#EFEBE9', '#C8B4AC'],
+  olive: ['#5F7A00', '#F1F8E0', '#C5E17A'], slate: ['#455A64', '#ECEFF1', '#B0BEC5']
+};
+const rgba = (hex, a) => `rgba(${parseInt(hex.slice(1, 3), 16)},${parseInt(hex.slice(3, 5), 16)},${parseInt(hex.slice(5, 7), 16)},${a})`;
+const customTag = k => S.tags.find(t => t.id === k);
+const allTags = () => CAT_ORDER.concat(S.tags.map(t => t.id));
+// Colours and labels for any tag, built-in or custom (a missing custom tag falls back to Tasks).
+function cat(k) {
+  if (CATS[k]) return darkMQ.matches ? { ...CATS[k], fg: DARK_CATS[k][0], bg: DARK_CATS[k][1] } : CATS[k];
+  const t = customTag(k); if (!t) return cat('tasks');
+  const [fg, bg, dfg] = TAG_COLORS[t.color] || TAG_COLORS.purple;
+  const short = (t.name.length <= 5 ? t.name : t.name.slice(0, 4)).toUpperCase();
+  return darkMQ.matches ? { label: t.name, short, fg: dfg, bg: rgba(dfg, .16) } : { label: t.name, short, fg, bg };
+}
+const emojiAllowed = k => !['school', 'work', 'gym'].includes(k);
 const section = k => darkMQ.matches ? { ...SECTIONS[k], ...DARK_SECTIONS[k] } : SECTIONS[k];
 
 /* ---------- tasks: filters and repeats ---------- */
-const shown = c => !ui.filters.length || ui.filters.includes(c);
+const shown = (c, list = ui.filters) => !list.length || list.includes(c);
+const INVERT = 'background:var(--text);color:var(--surface)';
+function filterBtn(list, open, action) {
+  const st = list.length === 1 ? `background:${cat(list[0]).fg};color:var(--onfg)` : list.length || open ? INVERT : '';
+  const label = !list.length ? 'Filter' : list.length === 1 ? cat(list[0]).label : list.length + ' selected';
+  return `<button type="button" class="filterbtn" style="${st}" data-a="${action}" aria-expanded="${open}">${svg('<path d="M4 6h16M7 12h10M10 18h4"/>', 16)}${esc(label)}</button>`;
+}
+// onPage: the pills sit on the grey page rather than inside a white card, so unselected ones need a white fill.
+function filterPills(list, action, onPage) {
+  const off = onPage ? 'background:var(--surface);border-color:var(--surface)' : 'background:var(--raised);border-color:var(--raised)';
+  return '<div class="wrap">' + ['all'].concat(allTags()).map(id => {
+    const on = id === 'all' ? !list.length : list.includes(id), c = id === 'all' ? null : cat(id);
+    const st = !on ? off : c ?`background:${c.fg};border-color:${c.fg};color:var(--onfg)` : INVERT + ';border-color:var(--text)';
+    return `<button type="button" class="pill" style="padding:0 14px;${st}" data-a="${action}" data-v="${id}" aria-pressed="${on}">${c ? `<span class="dot" style="background:${on ? 'var(--onfg)' : c.fg}"></span>${esc(c.label)}` : 'All'}</button>`;
+  }).join('') + '</div>';
+}
+// Toggles a tag in a filter list; "all", or every tag selected, means no filter.
+function toggledList(list, v) {
+  if (v === 'all') return [];
+  const next = list.includes(v) ? list.filter(c => c !== v) : list.concat(v);
+  return next.length === allTags().length ? [] : next;
+}
 const REPEAT = { day: 'Every day', week: 'Every week', month: 'Every month' };
 // Monthly repeats on, say, the 31st fall on the last day of shorter months.
 function occursOn(t, ds) {
@@ -283,12 +324,12 @@ function nextOpen(t, from) {
   while (d && t.repeat && isDone(t, d)) d = nextOn(t, addDays(d, 1));
   return d && !isDone(t, d) ? d : null;
 }
-const taskSub = t => CATS[t.cat].label + (t.workout ? ' · ' + WK[t.workout] : '') + (t.repeat ? ' · ' + REPEAT[t.repeat] : '');
+const taskSub = t => cat(t.cat).label + (t.workout ? ' · ' + WK[t.workout] : '') + (t.repeat ? ' · ' + REPEAT[t.repeat] : '');
 
 function chip(k, emoji) {
   const c = cat(k);
   return emoji ? `<div class="chip" style="background:${c.bg};font-size:22px;letter-spacing:0" aria-hidden="true">${esc(emoji)}</div>`
-    : `<div class="chip" style="background:${c.bg};color:${c.fg}">${c.short}</div>`;
+    : `<div class="chip" style="background:${c.bg};color:${c.fg}">${esc(c.short)}</div>`;
 }
 function itemsOn(ds) {
   const out = [];
@@ -309,7 +350,7 @@ function calendar(y, m, opts) {
     const ds = y + '-' + pad(m + 1) + '-' + pad(d);
     const cls = [ds === opts.sel ? 'sel' : '', ds === t ? 'today' : '', ds < t ? 'past' : ''].join(' ');
     const dots = opts.dots ? opts.dots(ds) : [];
-    h += `<button type="button" class="${cls}" data-a="${opts.action}" data-v="${ds}" aria-label="${dayLabel(ds)}"${opts.disablePast && ds < t ? ' disabled' : ''}>${d}${opts.dots ? `<span class="dots">${dots.map(c => `<i style="background:${CATS[c].fg}"></i>`).join('')}</span>` : ''}</button>`;
+    h += `<button type="button" class="${cls}" data-a="${opts.action}" data-v="${ds}" aria-label="${dayLabel(ds)}"${opts.disablePast && ds < t ? ' disabled' : ''}>${d}${opts.dots ? `<span class="dots">${dots.map(c => `<i style="background:${cat(c).fg}"></i>`).join('')}</span>` : ''}</button>`;
   }
   return h + '</div>';
 }
@@ -321,19 +362,8 @@ function planner() {
   const now = new Date();
   const pm = ui.plannerMonth || { y: now.getFullYear(), m: now.getMonth() };
   const items = itemsOn(sel);
-  const fs = ui.filters;
-  const INVERT = 'background:var(--text);color:var(--surface)';
-  const fbStyle = fs.length === 1 ? `background:${cat(fs[0]).fg};color:var(--onfg)` : fs.length || ui.filterOpen ? INVERT : '';
-  const fbLabel = fs.length === 0 ? 'Filter' : fs.length === 1 ? CATS[fs[0]].label : fs.length + ' selected';
-  const dotsFor = ds => CAT_ORDER.filter(c => shown(c) && ((c === 'work' && S.shifts[ds]) || S.tasks.some(x => x.cat === c && occursOn(x, ds))));
-  let panel = '';
-  if (ui.filterOpen) {
-    panel = `<div class="pills" style="grid-template-columns:repeat(5,minmax(0,1fr))">` + ['all'].concat(CAT_ORDER).map(id => {
-      const on = id === 'all' ? !fs.length : fs.includes(id);
-      const st = !on ? 'background:var(--raised);border-color:var(--raised)' : id === 'all' ? INVERT + ';border-color:var(--text)' : `background:${cat(id).fg};border-color:${cat(id).fg};color:var(--onfg)`;
-      return `<button type="button" class="pill" style="${st}" data-a="setFilter" data-v="${id}" aria-pressed="${on}">${id === 'all' ? '' : `<span class="dot" style="background:${on ? 'var(--onfg)' : cat(id).fg}"></span>`}${id === 'all' ? 'All' : CATS[id].label}</button>`;
-    }).join('') + '</div>';
-  }
+  const dotsFor = ds => allTags().filter(c => shown(c) && ((c === 'work' && S.shifts[ds]) || S.tasks.some(x => x.cat === c && occursOn(x, ds))));
+  let panel = ui.filterOpen ? filterPills(ui.filters, 'setFilter') : '';
   if (ui.monthOpen) {
     const py = ui.pickY;
     panel += `<div style="display:flex;flex-direction:column;gap:10px">
@@ -353,7 +383,7 @@ function planner() {
     <section class="card" style="gap:8px">
       <div class="calhead">
         <button type="button" class="monthbtn" data-a="toggleMonth" aria-expanded="${ui.monthOpen}">${MONTHS[pm.m]} ${pm.y}${svg('<path d="M6 9l6 6 6-6"/>', 16)}</button>
-        <button type="button" class="filterbtn" style="${fbStyle}" data-a="toggleFilter" aria-expanded="${ui.filterOpen}">${svg('<path d="M4 6h16M7 12h10M10 18h4"/>', 16)}${fbLabel}</button>
+        ${filterBtn(ui.filters, ui.filterOpen, 'toggleFilter')}
       </div>
       ${panel}
       ${calendar(pm.y, pm.m, { sel, action: 'planSel', dots: dotsFor })}
@@ -394,7 +424,7 @@ function restoreBackup(text) {
 function tasksScreen() {
   const t = todayStr();
   // A repeating task is listed once, on its next date (today's stays listed, ticked, until tomorrow).
-  const upcoming = S.tasks.map(x => ({ x, date: nextOn(x, t) })).filter(e => e.date)
+  const upcoming = S.tasks.map(x => ({ x, date: nextOn(x, t) })).filter(e => e.date && shown(e.x.cat, ui.taskFilters))
     .sort((a, b) => a.date.localeCompare(b.date) || a.x.created - b.x.created);
   const groups = [];
   upcoming.forEach(e => { const g = groups[groups.length - 1]; if (g && g.date === e.date) g.items.push(e); else groups.push({ date: e.date, items: [e] }); });
@@ -409,16 +439,20 @@ function tasksScreen() {
       <div class="calhead"><h2 style="font-size:16px">${title}</h2><button type="button" class="iconbtn" data-a="closeSheet" aria-label="Close">${svg('<path d="M6 6l12 12M18 6L6 18"/>', 16)}</button></div>
       <label class="sr" for="draft">Task name</label>
       <input id="draft" class="field" type="text" placeholder="Task or bill to pay…" value="${esc(ui.draft)}" data-bind="draft" autocomplete="off">
-      <div class="lbl">Tag</div>
-      <div class="pills" style="grid-template-columns:repeat(4,minmax(0,1fr))">${CAT_ORDER.map(c => {
+      <div class="calhead"><div class="lbl">Tag</div>${S.tags.length ? `<button type="button" class="textbtn" data-a="toggleTags" aria-expanded="${ui.tagsOpen}">${ui.tagsOpen ? 'Done' : 'Edit tags'}</button>` : ''}</div>
+      <div class="wrap">${allTags().map(c => {
         const on = ui.tag === c, k = cat(c);
-        return `<button type="button" class="pill" style="${on ? `background:${k.fg};border-color:${k.fg};color:var(--onfg)` : ''}" data-a="setTag" data-v="${c}" aria-pressed="${on}"><span class="dot" style="background:${on ? 'var(--onfg)' : k.fg}"></span>${k.label}</button>`;
-      }).join('')}</div>
+        return `<button type="button" class="pill" style="padding:0 14px;${on ? `background:${k.fg};border-color:${k.fg};color:var(--onfg)` : ''}" data-a="setTag" data-v="${c}" aria-pressed="${on}"><span class="dot" style="background:${on ? 'var(--onfg)' : k.fg}"></span>${esc(k.label)}</button>`;
+      }).join('')}${ui.tagForm && !ui.tagForm.id ? '' : `<button type="button" class="pill" style="padding:0 14px;border-style:dashed" data-a="newTag">+ New tag</button>`}</div>
+      ${ui.tagsOpen ? `<div class="list" style="gap:6px">${S.tags.map(tg => `<div class="calhead" style="background:var(--raised);border-radius:14px;padding:6px 6px 6px 14px">
+        <span style="display:flex;align-items:center;gap:8px;font-weight:800;min-width:0"><span class="dot" style="width:10px;height:10px;border-radius:5px;flex-shrink:0;background:${cat(tg.id).fg}"></span><span style="overflow-wrap:anywhere">${esc(tg.name)}</span></span>
+        <button type="button" class="textbtn" style="padding:0 10px" data-a="editTag" data-v="${tg.id}">Edit</button></div>`).join('')}</div>` : ''}
+      ${ui.tagForm ? tagForm() : ''}
       ${ui.tag === 'gym' ? `<div class="lbl">Workout</div><div class="pills" style="grid-template-columns:repeat(3,minmax(0,1fr))">${Object.keys(WK).map(w => {
         const on = ui.workout === w;
         return `<button type="button" class="pill" style="min-height:44px;${on ? 'background:#D93025;border-color:#D93025;color:#fff' : ''}" data-a="setWorkout" data-v="${w}" aria-pressed="${on}">${WK[w]}</button>`;
       }).join('')}</div>` : ''}
-      ${ui.tag === 'tasks' ? `<label class="lbl" for="emo">Emoji <span style="font-weight:700">(optional)</span></label>
+      ${emojiAllowed(ui.tag) ? `<label class="lbl" for="emo">Emoji <span style="font-weight:700">(optional)</span></label>
         <input id="emo" class="field" type="text" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="done" placeholder="🙂"
           value="${esc(ui.emoji || '')}" style="width:64px;text-align:center;font-size:26px;padding:0">` : ''}
       <div class="lbl">Repeat</div>
@@ -433,14 +467,27 @@ function tasksScreen() {
   }
   return `<div class="scroll">
     <header class="head"><div><div class="sub">${dayLabel(t)}, ${shortDate(t)}</div><h1>Tasks</h1></div></header>
+    <div style="display:flex;gap:8px;align-items:center">${ui.sheet ? '<div class="grow"></div>' : `<button type="button" class="btn soft grow" data-a="openSheet">+ New task</button>`}${filterBtn(ui.taskFilters, ui.taskFilterOpen, 'toggleTaskFilter')}</div>
+    ${ui.taskFilterOpen ? filterPills(ui.taskFilters, 'setTaskFilter', true) : ''}
     ${sheet}
     ${groups.length ? groups.map(g => `<section class="list"><h2>${dayLabel(g.date)}</h2>${g.items.map(({ x, date }) => { const done = isDone(x, date); return `
       <div class="row${done ? ' done' : ''}">
         <button type="button" class="hit" data-a="toggleTask" data-v="${x.id}|${date}" aria-pressed="${done}">${chip(x.cat, x.emoji)}<div class="rt"><b>${esc(x.text)}</b><small>${esc(taskSub(x))}</small></div><div class="check">${done ? CHECK : ''}</div></button>
         <button type="button" class="del" style="margin-right:-4px" data-a="editTask" data-v="${x.id}" aria-label="Edit ${esc(x.text)}">${svg('<path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-4-4L4 16z"/>', 16)}</button>
         <button type="button" class="del" data-a="delTask" data-v="${x.id}" aria-label="Delete ${esc(x.text)}">${svg('<path d="M6 6l12 12M18 6L6 18"/>', 16)}</button>
-      </div>`; }).join('')}</section>`).join('') : (ui.sheet ? '' : '<div class="empty">Nothing coming up. Tap “+ New task” to plan something.</div>')}
-    ${ui.sheet ? '' : `<button type="button" class="btn soft" data-a="openSheet">+ New task</button>`}
+      </div>`; }).join('')}</section>`).join('') : ui.sheet ? '' : `<div class="empty">${ui.taskFilters.length ? 'No upcoming tasks with these tags.' : 'Nothing coming up. Tap “+ New task” to plan something.'}</div>`}
+  </div>`;
+}
+function tagForm() {
+  const f = ui.tagForm;
+  return `<div style="display:flex;flex-direction:column;gap:10px;background:var(--raised);border-radius:16px;padding:12px" aria-label="${f.id ? 'Edit tag' : 'New tag'}">
+    <label class="lbl" for="tagname">${f.id ? 'Edit tag' : 'New tag'}</label>
+    <input id="tagname" class="field" type="text" maxlength="20" placeholder="Tag name, like Bills" value="${esc(f.name)}" autocomplete="off">
+    <div class="wrap" role="group" aria-label="Tag colour">${Object.entries(TAG_COLORS).map(([k, c]) => `<button type="button" data-a="tagColor" data-v="${k}" aria-label="${k}" aria-pressed="${f.color === k}"
+      style="width:36px;height:36px;border-radius:18px;cursor:pointer;border:3px solid ${f.color === k ? 'var(--text)' : 'transparent'};background:${darkMQ.matches ? c[2] : c[0]};background-clip:padding-box"></button>`).join('')}</div>
+    ${ui.tagMsg ? `<div class="note" role="status" style="color:var(--bad)">${esc(ui.tagMsg)}</div>` : ''}
+    <div style="display:flex;gap:8px"><button type="button" class="btn main grow" data-a="saveTag">${f.id ? 'Save tag' : 'Create tag'}</button><button type="button" class="btn soft" data-a="cancelTag">Cancel</button></div>
+    ${f.id ? `<button type="button" class="btn soft" style="color:var(--bad)" data-a="deleteTag" data-v="${f.id}">Delete tag</button>` : ''}
   </div>`;
 }
 
@@ -682,25 +729,52 @@ async function loadNews(force) {
 const A = {
   planSel: v => { ui.plannerSel = v; },
   toggleFilter: () => { ui.filterOpen = !ui.filterOpen; ui.monthOpen = false; },
-  setFilter: v => {
-    if (v === 'all') { ui.filters = []; return; }
-    ui.filters = ui.filters.includes(v) ? ui.filters.filter(c => c !== v) : ui.filters.concat(v);
-    if (ui.filters.length === CAT_ORDER.length) ui.filters = [];
+  setFilter: v => { ui.filters = toggledList(ui.filters, v); },
+  toggleTaskFilter: () => { ui.taskFilterOpen = !ui.taskFilterOpen; },
+  setTaskFilter: v => { ui.taskFilters = toggledList(ui.taskFilters, v); },
+
+  toggleTags: () => { ui.tagsOpen = !ui.tagsOpen; ui.tagForm = null; ui.tagMsg = ''; },
+  newTag: () => {
+    const used = S.tags.map(t => t.color), color = Object.keys(TAG_COLORS).find(k => !used.includes(k)) || 'purple';
+    ui.tagForm = { id: null, name: '', color }; ui.tagsOpen = false; ui.tagMsg = '';
+    setTimeout(() => { const el = document.getElementById('tagname'); if (el) el.focus(); }, 50);
+  },
+  editTag: v => { const t = customTag(v); if (t) { ui.tagForm = { id: t.id, name: t.name, color: t.color }; ui.tagsOpen = false; ui.tagMsg = ''; } },
+  tagColor: v => { ui.tagForm.color = v; },
+  cancelTag: () => { ui.tagForm = null; ui.tagMsg = ''; },
+  saveTag: () => {
+    const f = ui.tagForm, name = f.name.trim().replace(/\s+/g, ' ');
+    if (!name) { ui.tagMsg = 'Give the tag a name.'; return; }
+    const taken = Object.values(CATS).map(c => c.label).concat(S.tags.filter(t => t.id !== f.id).map(t => t.name));
+    if (taken.some(n => n.toLowerCase() === name.toLowerCase())) { ui.tagMsg = `There’s already a tag called “${name}”.`; return; }
+    if (f.id) Object.assign(customTag(f.id), { name, color: f.color });
+    else { const id = 'tag_' + uid(); S.tags.push({ id, name, color: f.color }); A.setTag(id); }
+    save(); ui.tagForm = null; ui.tagMsg = '';
+  },
+  deleteTag: v => {
+    const t = customTag(v); if (!t) return;
+    const n = S.tasks.filter(x => x.cat === v).length;
+    if (!confirm(`Delete the “${t.name}” tag?${n ? ` Its ${n} task${n === 1 ? '' : 's'} will move to the Tasks tag.` : ''}`)) return;
+    S.tasks.forEach(x => { if (x.cat === v) x.cat = 'tasks'; });
+    S.tags = S.tags.filter(x => x.id !== v);
+    ui.filters = ui.filters.filter(c => c !== v); ui.taskFilters = ui.taskFilters.filter(c => c !== v);
+    if (ui.tag === v) ui.tag = 'tasks';
+    save(); ui.tagForm = null; ui.tagMsg = '';
   },
   toggleMonth: () => { const n = new Date(); ui.monthOpen = !ui.monthOpen; ui.filterOpen = false; ui.pickY = (ui.plannerMonth || { y: n.getFullYear() }).y; },
   pickYear: v => { ui.pickY += Number(v); },
   pickMonth: v => { ui.plannerMonth = { y: ui.pickY, m: Number(v) }; ui.monthOpen = false; ui.plannerSel = ui.pickY + '-' + pad(Number(v) + 1) + '-01'; },
   goToday: () => { ui.plannerMonth = null; ui.plannerSel = null; ui.monthOpen = false; },
 
-  openSheet: () => { Object.assign(ui, { sheet: true, editing: null, draft: '', pickDate: todayStr(), pickMonth: null, workout: null, emoji: null, repeat: null }); A._focusSheet(); },
+  openSheet: () => { Object.assign(ui, { sheet: true, editing: null, draft: '', pickDate: todayStr(), pickMonth: null, workout: null, emoji: null, repeat: null, tagsOpen: false, tagForm: null, tagMsg: '' }); A._focusSheet(); },
   editTask: v => {
     const x = S.tasks.find(t => t.id === v); if (!x) return;
-    Object.assign(ui, { sheet: true, editing: x.id, draft: x.text, tag: x.cat, workout: x.workout || null, emoji: x.emoji || null, repeat: x.repeat || null, pickDate: x.date, pickMonth: null });
+    Object.assign(ui, { sheet: true, editing: x.id, draft: x.text, tag: customTag(x.cat) || CATS[x.cat] ? x.cat : 'tasks', workout: x.workout || null, emoji: x.emoji || null, repeat: x.repeat || null, pickDate: x.date, pickMonth: null, tagsOpen: false, tagForm: null, tagMsg: '' });
     A._focusSheet();
   },
   _focusSheet: () => setTimeout(() => { const sc = document.querySelector('.scroll'); if (sc) sc.scrollTop = 0; const el = document.getElementById('draft'); if (el) el.focus(); }, 50),
-  closeSheet: () => { ui.sheet = false; ui.editing = null; },
-  setTag: v => { ui.tag = v; if (v !== 'gym') ui.workout = null; if (v !== 'tasks') ui.emoji = null; },
+  closeSheet: () => { ui.sheet = false; ui.editing = null; ui.tagForm = null; ui.tagsOpen = false; },
+  setTag: v => { ui.tag = v; if (v !== 'gym') ui.workout = null; if (!emojiAllowed(v)) ui.emoji = null; },
   setWorkout: v => { ui.workout = v; },
   setRepeat: v => { ui.repeat = v || null; },
   pickDate: v => { ui.pickDate = v; },
@@ -713,7 +787,7 @@ const A = {
     const wk = ui.tag === 'gym' ? ui.workout : null;
     const text = ui.draft.trim() || (wk ? WK[wk] + ' day' : 'New task');
     const fields = { text, date: ui.pickDate || todayStr(), cat: ui.tag, workout: wk,
-      emoji: ui.tag === 'tasks' && ui.emoji ? ui.emoji : undefined, repeat: ui.repeat || undefined };
+      emoji: emojiAllowed(ui.tag) && ui.emoji ? ui.emoji : undefined, repeat: ui.repeat || undefined };
     const existing = ui.editing && S.tasks.find(t => t.id === ui.editing);
     if (existing) Object.assign(existing, fields);
     else S.tasks.push({ id: uid(), ...fields, done: false, created: Date.now() });
@@ -850,6 +924,7 @@ document.addEventListener('input', e => {
   const el = e.target;
   if (el.dataset.bind) ui[el.dataset.bind] = el.value;
   // Updates the box in place (no re-render) so the emoji keyboard stays open.
+  if (el.id === 'tagname' && ui.tagForm) ui.tagForm.name = el.value;
   if (el.id === 'emo') { const e = pickEmoji(el.value); ui.emoji = e || null; if (el.value !== e) el.value = e; }
   if (el.dataset.change === 'classPct') { const l = document.getElementById('prl'); if (l) l.textContent = el.value; }
 });
@@ -857,6 +932,7 @@ document.addEventListener('change', e => { const el = e.target; if (el.dataset.c
 document.addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
   if (e.target.id === 'draft' && !(ui.tag === 'gym' && !ui.workout)) { A.addTask(); render(); }
+  if (e.target.id === 'tagname') { e.preventDefault(); A.saveTag(); render(); }
   if (e.target.id === 'nex') { A.addEx(); render(); }
 });
 window.addEventListener('hashchange', () => { ui.filterOpen = ui.monthOpen = false; render(); window.scrollTo(0, 0); });
