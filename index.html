@@ -142,13 +142,13 @@ const NAV_ICONS = {
   news: '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 9h10M7 13h10M7 17h6"/>'
 };
 const FEEDS = [
-  { cat: 'wrestling', source: 'Cageside Seats', url: 'https://www.cagesideseats.com/rss/current.xml', site: 'https://www.cagesideseats.com' },
-  { cat: 'wrestling', source: '411Mania', url: 'https://411mania.com/wrestling/feed/', site: 'https://411mania.com/wrestling/' },
-  { cat: 'wrestling', source: 'Wrestling Inc', url: 'https://www.wrestlinginc.com/feed/', site: 'https://www.wrestlinginc.com' },
+  { cat: 'wrestling', source: 'Fightful', url: 'https://www.fightful.com/feed/', site: 'https://www.fightful.com' },
+  // PWInsider has no working feed of its own, so this is Google News' feed of its last day of articles.
+  { cat: 'wrestling', source: 'PWInsider', url: 'https://news.google.com/rss/search?q=site:pwinsider.com+when:1d&hl=en-US&gl=US&ceid=US:en', site: 'https://www.pwinsider.com', strip: ' - PWInsider' },
   { cat: 'wrestling', source: 'WrestleTalk', url: 'https://wrestletalk.com/feed/', site: 'https://wrestletalk.com' },
   { cat: 'games', source: 'IGN', url: 'https://feeds.feedburner.com/ign/all', site: 'https://www.ign.com' },
   { cat: 'games', source: 'GameSpot', url: 'https://www.gamespot.com/feeds/mashup/', site: 'https://www.gamespot.com' },
-  { cat: 'games', source: 'Polygon', url: 'https://www.polygon.com/rss/index.xml', site: 'https://www.polygon.com' },
+  { cat: 'games', source: 'GamesRadar+', url: 'https://www.gamesradar.com/feeds.xml', site: 'https://www.gamesradar.com' },
   { cat: 'baseball', source: 'D-backs', url: 'https://www.mlb.com/dbacks/feeds/news/rss.xml', site: 'https://www.mlb.com/dbacks' },
   { cat: 'baseball', source: 'Brewers', url: 'https://www.mlb.com/brewers/feeds/news/rss.xml', site: 'https://www.mlb.com/brewers' }
 ];
@@ -487,9 +487,10 @@ const LOGOS = {
   nintendo: ['logos/nintendo.svg', '#E60012', 2], playstation: ['logos/playstation.svg', '#fff', 6]
 };
 const LOGO_RULES = {
-  wrestling: [['wwe', /\bWWE\b|\bRaw\b|SmackDown|\bNXT\b|WrestleMania|Survivor Series|Royal Rumble|SummerSlam|Crown Jewel/],
-              ['aew', /\bAEW\b|Dynamite|Blood & Guts|Full Gear|Double or Nothing|Forbidden Door/],
-              ['other', /\b(TNA|MLW|GCW|NJPW|ROH|NWA|AAA|CMLL|Stardom)\b|Indies|Lucha/]],
+  // Case-sensitive on purpose ("raw" the word isn't the show), with ALL-CAPS variants for PWInsider-style headlines.
+  wrestling: [['wwe', /\bWWE\b|\b(Raw|RAW)\b|SmackDown|SMACKDOWN|\bNXT\b|WrestleMania|WRESTLEMANIA|Survivor Series|SURVIVOR SERIES|Royal Rumble|ROYAL RUMBLE|SummerSlam|SUMMERSLAM|Crown Jewel|CROWN JEWEL/],
+              ['aew', /\bAEW\b|Dynamite|DYNAMITE|Blood & Guts|BLOOD & GUTS|Full Gear|FULL GEAR|Double or Nothing|DOUBLE OR NOTHING|Forbidden Door|FORBIDDEN DOOR/],
+              ['other', /\b(TNA|MLW|GCW|NJPW|ROH|NWA|AAA|CMLL|Stardom|STARDOM)\b|Indies|INDIES|Lucha|LUCHA/]],
   games: [['nintendo', /Nintendo|Switch 2|Zelda|Mario|Pok[eé]mon|Yoshi|Kirby|Metroid|Donkey Kong|Splatoon|Animal Crossing|Smash Bros/i],
           ['playstation', /PlayStation|\bPS[45]\b|PS Plus|DualSense|\bSony\b/i]]
 };
@@ -513,7 +514,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 function newsScreen() {
   const tab = ui.newsTab;
   const items = [], seen = new Map();
-  const inTab = S.news.items.filter(n => tab === 'all' || n.cat === tab);
+  const inTab = S.news.items.filter(n => (tab === 'all' || n.cat === tab) && FEEDS.some(f => f.source === n.source));
   inTab.filter(n => Date.now() - newsTime(n) < DAY_MS).forEach(n => {
     const key = n.title.trim().toLowerCase(), prev = seen.get(key);
     if (!prev) { const copy = { ...n }; seen.set(key, copy); items.push(copy); }
@@ -552,6 +553,7 @@ async function loadNews(force) {
         if (j.status !== 'ok') throw new Error(j.message || 'feed failed');
         return j.items.slice(0, 10).map(it => {
           const d = document.createElement('textarea'); d.innerHTML = it.title || '';
+          if (f.strip && d.value.endsWith(f.strip)) d.value = d.value.slice(0, -f.strip.length);
           const tags = (Array.isArray(it.categories) ? it.categories : []).filter(c => typeof c === 'string').slice(0, 10);
           return { cat: f.cat, source: f.source, title: d.value, link: it.link, date: it.pubDate || '', tags };
         });

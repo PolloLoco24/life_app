@@ -1,5 +1,5 @@
 // Lets the app open without internet. Bump VERSION when you change index.html.
-const VERSION = 'planner-v14';
+const VERSION = 'planner-v15';
 const FILES = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './apple-touch-icon.png',
   './logos/dbacks.svg', './logos/brewers.svg', './logos/wwe.svg', './logos/aew.svg', './logos/nintendo.svg', './logos/playstation.svg'];
 
