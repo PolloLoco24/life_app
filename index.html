@@ -482,7 +482,12 @@ function schoolScreen() {
 
 function newsScreen() {
   const tab = ui.newsTab;
-  const items = S.news.items.filter(n => tab === 'all' || n.cat === tab);
+  const items = [], seen = new Map();
+  S.news.items.filter(n => tab === 'all' || n.cat === tab).forEach(n => {
+    const key = n.title.trim().toLowerCase(), prev = seen.get(key);
+    if (!prev) { const copy = { ...n }; seen.set(key, copy); items.push(copy); }
+    else if (!prev.source.split(' & ').includes(n.source)) prev.source += ' & ' + n.source;
+  });
   const tabs = [['all', 'All'], ['wrestling', 'Wrestling'], ['games', 'Games'], ['baseball', 'Baseball']];
   const CHIP = { wrestling: ['WWE/AEW', 'background:#FEEFE3;color:#B45309'], games: ['GAMES', 'background:#E8F0FE;color:#1A73E8'], baseball: ['MLB', 'background:#E6F4EA;color:#188038'] };
   let body;
