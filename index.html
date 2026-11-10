@@ -536,8 +536,8 @@ function newsScreen() {
 /* ---------- news loading ---------- */
 async function loadNews(force) {
   if (ui.newsLoading) return;
-  const haveCats = new Set(S.news.items.map(n => n.cat));
-  if (!force && S.news.items.length && Date.now() - S.news.at < 60 * 60 * 1000 && FEEDS.every(f => haveCats.has(f.cat))) return;
+  const haveSources = new Set(S.news.items.map(n => n.source));
+  if (!force && S.news.items.length && Date.now() - S.news.at < 60 * 60 * 1000 && FEEDS.every(f => haveSources.has(f.source))) return;
   if (!force && ui.newsTried && Date.now() - ui.newsTried < 10 * 60 * 1000) return;
   ui.newsTried = Date.now();
   ui.newsLoading = true; ui.newsErr = false; render();
