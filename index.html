@@ -104,6 +104,7 @@ input[type=time]{-webkit-appearance:none;appearance:none}
 .tag{min-height:40px;padding:0 14px;border-radius:20px;border:none;background:var(--surface);color:var(--text);font:800 13px Nunito,system-ui,sans-serif;cursor:pointer;box-shadow:0 2px 6px var(--shadow)}
 .tag.on{background:var(--text);color:var(--surface)}
 .note{font-size:13px;font-weight:700;color:var(--text2)}
+.rowpad{width:74px;flex-shrink:0}
 .textbtn{min-height:32px;border:none;background:none;padding:0;font:800 14px Nunito,system-ui,sans-serif;color:var(--accent);cursor:pointer}
 a.row{text-decoration:none}
 .toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 96px);transform:translateX(-50%);background:var(--text);color:var(--surface);border-radius:22px;padding:10px 10px 10px 18px;display:flex;align-items:center;gap:12px;font-weight:800;font-size:14px;box-shadow:0 6px 20px rgba(0,0,0,.2);z-index:5}
@@ -324,6 +325,15 @@ function nextOpen(t, from) {
   while (d && t.repeat && isDone(t, d)) d = nextOn(t, addDays(d, 1));
   return d && !isDone(t, d) ? d : null;
 }
+// A shift ending at or before its start time (e.g. 10pm–6am) ends the next day.
+function shiftEndMs(ds, sh) {
+  const [h1, m1] = sh.start.split(':').map(Number), [h2, m2] = sh.end.split(':').map(Number);
+  const d = parse(ds); d.setHours(h2, m2, 0, 0);
+  if (h2 * 60 + m2 <= h1 * 60 + m1) d.setDate(d.getDate() + 1);
+  return d.getTime();
+}
+const shiftDone = (ds, sh) => Date.now() >= shiftEndMs(ds, sh);
+const shiftTimes = sh => fmtTime(sh.start) + ' – ' + fmtTime(sh.end);
 const taskSub = t => cat(t.cat).label + (t.workout ? ' · ' + WK[t.workout] : '') + (t.repeat ? ' · ' + REPEAT[t.repeat] : '');
 
 function chip(k, emoji) {
@@ -334,7 +344,7 @@ function chip(k, emoji) {
 function itemsOn(ds) {
   const out = [];
   const sh = S.shifts[ds];
-  if (sh && shown('work')) out.push({ cat: 'work', title: 'Work shift', sub: 'Work · ' + fmtTime(sh.start) + ' – ' + fmtTime(sh.end) });
+  if (sh && shown('work')) out.push({ cat: 'work', title: 'Work shift', sub: 'Work · ' + shiftTimes(sh), done: shiftDone(ds, sh) });
   S.tasks.filter(t => shown(t.cat) && occursOn(t, ds))
     .forEach(t => out.push({ cat: t.cat, emoji: t.emoji, title: t.text, sub: taskSub(t), done: isDone(t, ds) }));
   return out;
@@ -424,8 +434,12 @@ function restoreBackup(text) {
 function tasksScreen() {
   const t = todayStr();
   // A repeating task is listed once, on its next date (today's stays listed, ticked, until tomorrow).
-  const upcoming = S.tasks.map(x => ({ x, date: nextOn(x, t) })).filter(e => e.date && shown(e.x.cat, ui.taskFilters))
-    .sort((a, b) => a.date.localeCompare(b.date) || a.x.created - b.x.created);
+  // Work shifts from the Work tab are listed first on their day; they tick themselves off when the shift ends.
+  // (Last night's shift stays listed until it actually ends, e.g. a 10pm–6am shift after midnight.)
+  const shifts = shown('work', ui.taskFilters) ? Object.keys(S.shifts)
+    .filter(ds => ds >= t || (ds === addDays(t, -1) && !shiftDone(ds, S.shifts[ds]))).map(ds => ({ shift: S.shifts[ds], date: ds })) : [];
+  const upcoming = S.tasks.map(x => ({ x, date: nextOn(x, t) })).filter(e => e.date && shown(e.x.cat, ui.taskFilters)).concat(shifts)
+    .sort((a, b) => a.date.localeCompare(b.date) || !!b.shift - !!a.shift || a.x.created - b.x.created);
   const groups = [];
   upcoming.forEach(e => { const g = groups[groups.length - 1]; if (g && g.date === e.date) g.items.push(e); else groups.push({ date: e.date, items: [e] }); });
   let sheet = '';
@@ -470,12 +484,20 @@ function tasksScreen() {
     <div style="display:flex;gap:8px;align-items:center">${ui.sheet ? '<div class="grow"></div>' : `<button type="button" class="btn soft grow" data-a="openSheet">+ New task</button>`}${filterBtn(ui.taskFilters, ui.taskFilterOpen, 'toggleTaskFilter')}</div>
     ${ui.taskFilterOpen ? filterPills(ui.taskFilters, 'setTaskFilter', true) : ''}
     ${sheet}
-    ${groups.length ? groups.map(g => `<section class="list"><h2>${dayLabel(g.date)}</h2>${g.items.map(({ x, date }) => { const done = isDone(x, date); return `
+    ${groups.length ? groups.map(g => `<section class="list"><h2>${dayLabel(g.date)}</h2>${g.items.map(({ x, date, shift }) => { if (shift) return shiftRow(date, shift); const done = isDone(x, date); return `
       <div class="row${done ? ' done' : ''}">
         <button type="button" class="hit" data-a="toggleTask" data-v="${x.id}|${date}" aria-pressed="${done}">${chip(x.cat, x.emoji)}<div class="rt"><b>${esc(x.text)}</b><small>${esc(taskSub(x))}</small></div><div class="check">${done ? CHECK : ''}</div></button>
         <button type="button" class="del" style="margin-right:-4px" data-a="editTask" data-v="${x.id}" aria-label="Edit ${esc(x.text)}">${svg('<path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-4-4L4 16z"/>', 16)}</button>
         <button type="button" class="del" data-a="delTask" data-v="${x.id}" aria-label="Delete ${esc(x.text)}">${svg('<path d="M6 6l12 12M18 6L6 18"/>', 16)}</button>
       </div>`; }).join('')}</section>`).join('') : ui.sheet ? '' : `<div class="empty">${ui.taskFilters.length ? 'No upcoming tasks with these tags.' : 'Nothing coming up. Tap “+ New task” to plan something.'}</div>`}
+  </div>`;
+}
+// The spacer stands in for the edit/delete buttons so the tick lines up with task rows.
+function shiftRow(ds, sh) {
+  const done = shiftDone(ds, sh);
+  return `<div class="row${done ? ' done' : ''}">
+    <button type="button" class="hit" data-a="goShift" data-v="${ds}" aria-label="Work shift, ${shiftTimes(sh)}${done ? ', done' : ''}. Opens the Work tab.">${chip('work')}<div class="rt"><b>Work shift</b><small>Work · ${shiftTimes(sh)}</small></div><div class="check">${done ? CHECK : ''}</div></button>
+    <span class="rowpad" aria-hidden="true"></span>
   </div>`;
 }
 function tagForm() {
@@ -817,6 +839,7 @@ const A = {
 
   week: v => { ui.weekStart = addDays(ui.weekStart || weekStartOf(todayStr()), Number(v)); ui.workOpen = null; },
   openDay: v => { if (ui.workOpen === v) { ui.workOpen = null; return; } ui.workOpen = v; const s = S.shifts[v]; ui.workStart = s ? s.start : '09:00'; ui.workEnd = s ? s.end : '17:00'; },
+  goShift: v => { ui.weekStart = weekStartOf(v); ui.workOpen = null; A.openDay(v); location.hash = '#work'; },
   saveShift: v => { if (ui.workStart && ui.workEnd) { S.shifts[v] = { start: ui.workStart, end: ui.workEnd }; save(); } ui.workOpen = null; },
   clearShift: v => { delete S.shifts[v]; save(); ui.workOpen = null; },
 
@@ -913,6 +936,7 @@ function render() {
   if (fromX !== null) { pill.style.transform = `translateX(${fromX}px)`; pill.getBoundingClientRect(); pill.style.transform = ''; }
   const sc = app.querySelector('.scroll'); if (sc && keepScroll) sc.scrollTop = keepScroll;
   render._route = r;
+  render._timeKey = timeKey();
   if (r === 'news') loadNews(false);
 }
 document.addEventListener('click', e => {
@@ -938,6 +962,15 @@ document.addEventListener('keydown', e => {
 window.addEventListener('hashchange', () => { ui.filterOpen = ui.monthOpen = false; render(); window.scrollTo(0, 0); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
 darkMQ.addEventListener('change', render);
+// Redraw when a shift ends or the day changes while the app is open — but not mid-typing.
+function timeKey() {
+  const t = todayStr();
+  return t + Object.keys(S.shifts).filter(ds => ds >= addDays(t, -1) && ds <= addDays(t, 1)).map(ds => ds + shiftDone(ds, S.shifts[ds])).join();
+}
+setInterval(() => {
+  const typing = document.activeElement && document.activeElement.matches('input, textarea, select');
+  if (!document.hidden && !typing && timeKey() !== render._timeKey) render();
+}, 30000);
 render();
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // Check for a new version whenever the app comes back to the front, and reload once when it takes over.
