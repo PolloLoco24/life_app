@@ -492,11 +492,11 @@ function tasksScreen() {
       </div>`; }).join('')}</section>`).join('') : ui.sheet ? '' : `<div class="empty">${ui.taskFilters.length ? 'No upcoming tasks with these tags.' : 'Nothing coming up. Tap “+ New task” to plan something.'}</div>`}
   </div>`;
 }
-// The spacer stands in for the edit/delete buttons so the tick lines up with task rows.
+// Not tappable; shows only a gold tick once the shift has ended. The spacers keep the tick lined up with task rows.
 function shiftRow(ds, sh) {
   const done = shiftDone(ds, sh);
   return `<div class="row${done ? ' done' : ''}">
-    <button type="button" class="hit" data-a="goShift" data-v="${ds}" aria-label="Work shift, ${shiftTimes(sh)}${done ? ', done' : ''}. Opens the Work tab.">${chip('work')}<div class="rt"><b>Work shift</b><small>Work · ${shiftTimes(sh)}</small></div><div class="check">${done ? CHECK : ''}</div></button>
+    <div class="hit" style="cursor:default">${chip('work')}<div class="rt"><b>Work shift</b><small>Work · ${shiftTimes(sh)}</small></div>${done ? `<div class="check" role="img" aria-label="Done">${CHECK}</div>` : '<span style="width:28px;flex-shrink:0" aria-hidden="true"></span>'}</div>
     <span class="rowpad" aria-hidden="true"></span>
   </div>`;
 }
@@ -838,9 +838,7 @@ const A = {
   _undoTimer: () => { clearTimeout(A._u); A._u = setTimeout(() => { ui.undo = null; render(); }, 5000); },
 
   week: v => { ui.weekStart = addDays(ui.weekStart || weekStartOf(todayStr()), Number(v)); ui.workOpen = null; },
-  openDay: v => { if (ui.workOpen === v) { ui.workOpen = null; return; } ui.workOpen = v; const s = S.shifts[v]; ui.workStart = s ? s.start : '09:00'; ui.workEnd = s ? s.end : '17:00'; },
-  goShift: v => { ui.weekStart = weekStartOf(v); ui.workOpen = null; A.openDay(v); location.hash = '#work'; },
-  saveShift: v => { if (ui.workStart && ui.workEnd) { S.shifts[v] = { start: ui.workStart, end: ui.workEnd }; save(); } ui.workOpen = null; },
+  openDay: v => { if (ui.workOpen === v) { ui.workOpen = null; return; } ui.workOpen = v; const s = S.shifts[v]; ui.workStart = s ? s.start : '09:00'; ui.workEnd = s ? s.end : '17:00'; },  saveShift: v => { if (ui.workStart && ui.workEnd) { S.shifts[v] = { start: ui.workStart, end: ui.workEnd }; save(); } ui.workOpen = null; },
   clearShift: v => { delete S.shifts[v]; save(); ui.workOpen = null; },
 
   setSplit: v => { ui.split = v; ui.gymView = 'workout'; ui.gymOpen = null; ui.addingEx = false; },
