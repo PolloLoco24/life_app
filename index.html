@@ -488,8 +488,8 @@ const LOGOS = {
 };
 const LOGO_RULES = {
   // Case-sensitive on purpose ("raw" the word isn't the show), with ALL-CAPS variants for PWInsider-style headlines.
-  wrestling: [['wwe', /\bWWE\b|\b(Raw|RAW)\b|SmackDown|SMACKDOWN|\bNXT\b|WrestleMania|WRESTLEMANIA|Survivor Series|SURVIVOR SERIES|Royal Rumble|ROYAL RUMBLE|SummerSlam|SUMMERSLAM|Crown Jewel|CROWN JEWEL/],
-              ['aew', /\bAEW\b|Dynamite|DYNAMITE|Blood & Guts|BLOOD & GUTS|Full Gear|FULL GEAR|Double or Nothing|DOUBLE OR NOTHING|Forbidden Door|FORBIDDEN DOOR/],
+  wrestling: [['wwe', /\b(WWE|wwe|Wwe)\b|\b(Raw|RAW)\b|SmackDown|SMACKDOWN|\bNXT\b|WrestleMania|WRESTLEMANIA|Survivor Series|SURVIVOR SERIES|Royal Rumble|ROYAL RUMBLE|SummerSlam|SUMMERSLAM|Crown Jewel|CROWN JEWEL/],
+              ['aew', /\b(AEW|aew|Aew)\b|Dynamite|DYNAMITE|Blood & Guts|BLOOD & GUTS|Full Gear|FULL GEAR|Double or Nothing|DOUBLE OR NOTHING|Forbidden Door|FORBIDDEN DOOR/],
               ['other', /\b(TNA|MLW|GCW|NJPW|ROH|NWA|AAA|CMLL|Stardom|STARDOM)\b|Indies|INDIES|Lucha|LUCHA/]],
   games: [['nintendo', /Nintendo|Switch 2|Zelda|Mario|Pok[eé]mon|Yoshi|Kirby|Metroid|Donkey Kong|Splatoon|Animal Crossing|Smash Bros/i],
           ['playstation', /PlayStation|\bPS[45]\b|PS Plus|DualSense|\bSony\b/i]]
@@ -541,6 +541,8 @@ function newsScreen() {
 }
 
 /* ---------- news loading ---------- */
+// Free rss2json key: lifts the "new feeds" block and allows more than 10 stories per feed. It's public by necessity.
+const RSS2JSON_KEY = 'wy3xvp5y6kgtbqep', PER_FEED = 30;
 async function loadNews(force) {
   if (ui.newsLoading) return;
   const haveSources = new Set(S.news.items.map(n => n.source));
@@ -549,11 +551,11 @@ async function loadNews(force) {
   ui.newsTried = Date.now();
   ui.newsLoading = true; ui.newsErr = false; render();
   const results = await Promise.allSettled(FEEDS.map(f =>
-    fetch('https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(f.url))
+    fetch('https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(f.url) + '&api_key=' + RSS2JSON_KEY + '&count=' + PER_FEED)
       .then(r => r.json())
       .then(j => {
         if (j.status !== 'ok') throw new Error(j.message || 'feed failed');
-        return j.items.slice(0, 10).map(it => {
+        return j.items.slice(0, PER_FEED).map(it => {
           const d = document.createElement('textarea'); d.innerHTML = it.title || '';
           if (f.strip && d.value.endsWith(f.strip)) d.value = d.value.slice(0, -f.strip.length);
           const tags = (Array.isArray(it.categories) ? it.categories : []).filter(c => typeof c === 'string').slice(0, 10);
@@ -565,7 +567,7 @@ async function loadNews(force) {
   const failed = FEEDS.filter((f, i) => results[i].status === 'rejected').map(f => f.source);
   const items = fresh.concat(S.news.items.filter(n => failed.includes(n.source)));
   items.sort((a, b) => newsTime(b) - newsTime(a));
-  if (fresh.length) S.news = { items: items.slice(0, FEEDS.length * 10), at: Date.now(), failed };
+  if (fresh.length) S.news = { items: items.slice(0, FEEDS.length * PER_FEED), at: Date.now(), failed };
   else { ui.newsErr = true; S.news.failed = FEEDS.map(f => f.source); }
   save();
   ui.newsLoading = false; render();
