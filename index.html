@@ -30,7 +30,27 @@ nav.tabs{margin:0 12px calc(env(safe-area-inset-bottom) + 10px);background:var(-
 nav.tabs a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:54px;border-radius:20px;font-size:11px;font-weight:800;color:var(--text2);text-decoration:none;position:relative;z-index:1;transition:color .3s}
 nav.tabs a.on{color:var(--accent)}
 nav.tabs .glide{position:absolute;top:6px;bottom:6px;left:6px;width:calc((100% - 22px) / 6);border-radius:20px;background:var(--soft);transform:translateX(calc(var(--i) * (100% + 2px)));transition:transform .35s cubic-bezier(.3,.7,.2,1)}
-@media (prefers-reduced-motion:reduce){nav.tabs .glide,nav.tabs a{transition:none}}
+/* Animations. "enter" plays when you switch tabs; "pop" only on things that just appeared (see render). */
+@keyframes enter{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes pop{from{opacity:0;transform:translateY(-6px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes tick{0%{transform:scale(.3)}60%{transform:scale(1.25)}100%{transform:scale(1)}}
+@keyframes glow{from{box-shadow:0 0 0 0 rgba(232,194,90,.55)}to{box-shadow:0 0 0 14px rgba(232,194,90,0)}}
+@keyframes toastin{from{opacity:0;transform:translate(-50%,16px)}to{opacity:1;transform:translate(-50%,0)}}
+@keyframes draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+@keyframes selpop{0%{transform:scale(.8)}70%{transform:scale(1.08)}100%{transform:scale(1)}}
+.scroll.enter>*{animation:enter .34s cubic-bezier(.2,.7,.2,1) both}
+.scroll.enter>*:nth-child(2){animation-delay:.03s}.scroll.enter>*:nth-child(3){animation-delay:.06s}
+.scroll.enter>*:nth-child(4){animation-delay:.09s}.scroll.enter>*:nth-child(n+5){animation-delay:.12s}
+.pop{animation:pop .26s cubic-bezier(.2,.7,.2,1) both}
+.toast.pop{animation:toastin .3s cubic-bezier(.2,.8,.2,1) both}
+.cal button.pop{animation:selpop .28s cubic-bezier(.3,1.4,.5,1)}
+.pop .line{stroke-dasharray:1;animation:draw .9s .1s ease-out both}
+.row.ticked{animation:glow .7s ease-out}
+.row.ticked .check{animation:tick .4s cubic-bezier(.3,1.5,.5,1)}
+.btn,.pill,.tag,.round,.iconbtn,.filterbtn,.textbtn,.seg button,.cal button,.row .hit,.del{transition:transform .12s ease}
+.btn:active,.pill:active,.tag:active,.round:active,.iconbtn:active,.filterbtn:active,.seg button:active,.cal button:active,.del:active{transform:scale(.94)}
+.row .hit:active{transform:scale(.98)}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 .head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
 .sub{font-size:14px;font-weight:600;color:var(--text2)}
 h1{margin:0;font-size:30px;font-weight:800;line-height:1.15}
@@ -289,7 +309,7 @@ function filterBtn(list, open, action) {
 // onPage: the pills sit on the grey page rather than inside a white card, so unselected ones need a white fill.
 function filterPills(list, action, onPage) {
   const off = onPage ? 'background:var(--surface);border-color:var(--surface)' : 'background:var(--raised);border-color:var(--raised)';
-  return '<div class="wrap">' + ['all'].concat(allTags()).map(id => {
+  return `<div class="wrap" data-anim="f-${action}">` + ['all'].concat(allTags()).map(id => {
     const on = id === 'all' ? !list.length : list.includes(id), c = id === 'all' ? null : cat(id);
     const st = !on ? off : c ?`background:${c.fg};border-color:${c.fg};color:var(--onfg)` : INVERT + ';border-color:var(--text)';
     return `<button type="button" class="pill" style="padding:0 14px;${st}" data-a="${action}" data-v="${id}" aria-pressed="${on}">${c ? `<span class="dot" style="background:${on ? 'var(--onfg)' : c.fg}"></span>${esc(c.label)}` : 'All'}</button>`;
@@ -358,8 +378,8 @@ function itemsOn(ds) {
     .forEach(t => out.push({ cat: t.cat, emoji: t.emoji, title: t.text, sub: taskSub(t), done: isDone(t, ds) }));
   return out;
 }
-function staticRow(it) {
-  return `<div class="row${it.done ? ' done' : ''}">${chip(it.cat, it.emoji)}<div class="rt"><b>${esc(it.title)}</b><small>${esc(it.sub)}</small></div>${it.done ? `<div class="check" role="img" aria-label="Done">${CHECK}</div>` : ''}</div>`;
+function staticRow(it, key) {
+  return `<div class="row${it.done ? ' done' : ''}"${key ? ` data-anim="p-${esc(key)}"` : ''}>${chip(it.cat, it.emoji)}<div class="rt"><b>${esc(it.title)}</b><small>${esc(it.sub)}</small></div>${it.done ? `<div class="check" role="img" aria-label="Done">${CHECK}</div>` : ''}</div>`;
 }
 function calendar(y, m, opts) {
   const first = new Date(y, m, 1).getDay(), count = new Date(y, m + 1, 0).getDate(), t = todayStr();
@@ -369,7 +389,7 @@ function calendar(y, m, opts) {
     const ds = y + '-' + pad(m + 1) + '-' + pad(d);
     const cls = [ds === opts.sel ? 'sel' : '', ds === t ? 'today' : '', ds < t ? 'past' : ''].join(' ');
     const dots = opts.dots ? opts.dots(ds) : [];
-    h += `<button type="button" class="${cls}" data-a="${opts.action}" data-v="${ds}" aria-label="${dayLabel(ds)}"${opts.disablePast && ds < t ? ' disabled' : ''}>${d}${opts.dots ? `<span class="dots">${dots.map(c => `<i style="background:${cat(c).fg}"></i>`).join('')}</span>` : ''}</button>`;
+    h += `<button type="button" class="${cls}" data-a="${opts.action}" data-v="${ds}"${ds === opts.sel ? ` data-anim="sel-${opts.action}-${ds}"` : ''} aria-label="${dayLabel(ds)}"${opts.disablePast && ds < t ? ' disabled' : ''}>${d}${opts.dots ? `<span class="dots">${dots.map(c => `<i style="background:${cat(c).fg}"></i>`).join('')}</span>` : ''}</button>`;
   }
   return h + '</div>';
 }
@@ -385,7 +405,7 @@ function planner() {
   let panel = ui.filterOpen ? filterPills(ui.filters, 'setFilter') : '';
   if (ui.monthOpen) {
     const py = ui.pickY;
-    panel += `<div style="display:flex;flex-direction:column;gap:10px">
+    panel += `<div style="display:flex;flex-direction:column;gap:10px" data-anim="months">
       <div class="calhead"><button type="button" class="iconbtn" data-a="pickYear" data-v="-1" aria-label="Previous year">${svg('<path d="M15 6l-6 6 6 6"/>', 16)}</button><b style="font-size:16px">${py}</b><button type="button" class="iconbtn" data-a="pickYear" data-v="1" aria-label="Next year">${svg('<path d="M9 6l6 6-6 6"/>', 16)}</button></div>
       <div class="pills" style="grid-template-columns:repeat(4,minmax(0,1fr))">${MONTHS.map((mn, i) => {
         const on = i === pm.m && py === pm.y, cur = i === now.getMonth() && py === now.getFullYear();
@@ -397,7 +417,7 @@ function planner() {
   return `<div class="scroll">
     <header class="head"><div><h1>${now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</h1></div></header>
     <section class="list" aria-live="polite"><h2>${dayLabel(sel)}</h2>
-      ${items.length ? items.map(staticRow).join('') : `<div class="empty">Nothing planned${sel === t ? ' today' : ' for this day'}.</div>`}
+      ${items.length ? items.map((it, i) => staticRow(it, sel + '-' + i + '-' + it.title)).join('') : `<div class="empty">Nothing planned${sel === t ? ' today' : ' for this day'}.</div>`}
     </section>
     <section class="card" style="gap:8px">
       <div class="calhead">
@@ -412,7 +432,7 @@ function planner() {
 }
 function backupCard() {
   const msg = ui.backupMsg;
-  return `<section class="card" aria-label="Backup and restore">
+  return `<section class="card" aria-label="Backup and restore" data-anim="backup">
     <div class="calhead"><h2 style="font-size:16px">Backup &amp; restore</h2><button type="button" class="iconbtn" data-a="backupClose" aria-label="Close">${svg('<path d="M6 6l12 12M18 6L6 18"/>', 16)}</button></div>
     <div class="note">Your tasks, shifts, gym and school data live only on this device. Save a backup before removing the app or switching phones.</div>
     <div style="display:flex;gap:8px"><button type="button" class="btn main grow" data-a="backupSave">Save backup file</button><button type="button" class="btn soft" data-a="backupCopy">Copy</button></div>
@@ -459,7 +479,7 @@ function tasksScreen() {
     const needW = ui.tag === 'gym' && !ui.workout;
     const title = ui.editing ? 'Edit task' : 'New task';
     const go = needW ? 'Pick a workout first' : ui.editing ? 'Save changes' : (ui.repeat ? 'Add, starting ' : 'Add for ') + dayLabel(pd);
-    sheet = `<section class="card" aria-label="${title}">
+    sheet = `<section class="card" aria-label="${title}" data-anim="sheet-${ui.editing || 'new'}">
       <div class="calhead"><h2 style="font-size:16px">${title}</h2><button type="button" class="iconbtn" data-a="closeSheet" aria-label="Close">${svg('<path d="M6 6l12 12M18 6L6 18"/>', 16)}</button></div>
       <label class="sr" for="draft">Task name</label>
       <input id="draft" class="field" type="text" placeholder="Task or bill to pay…" value="${esc(ui.draft)}" data-bind="draft" autocomplete="off">
@@ -468,7 +488,7 @@ function tasksScreen() {
         const on = ui.tag === c, k = cat(c);
         return `<button type="button" class="pill" style="padding:0 14px;${on ? `background:${k.fg};border-color:${k.fg};color:var(--onfg)` : ''}" data-a="setTag" data-v="${c}" aria-pressed="${on}"><span class="dot" style="background:${on ? 'var(--onfg)' : k.fg}"></span>${esc(k.label)}</button>`;
       }).join('')}${ui.tagForm && !ui.tagForm.id ? '' : `<button type="button" class="pill" style="padding:0 14px;border-style:dashed" data-a="newTag">+ New tag</button>`}</div>
-      ${ui.tagsOpen ? `<div class="list" style="gap:6px">${S.tags.map(tg => `<div class="calhead" style="background:var(--raised);border-radius:14px;padding:6px 6px 6px 14px">
+      ${ui.tagsOpen ? `<div class="list" style="gap:6px" data-anim="tagslist">${S.tags.map(tg => `<div class="calhead" style="background:var(--raised);border-radius:14px;padding:6px 6px 6px 14px">
         <span style="display:flex;align-items:center;gap:8px;font-weight:800;min-width:0"><span class="dot" style="width:10px;height:10px;border-radius:5px;flex-shrink:0;background:${cat(tg.id).fg}"></span><span style="overflow-wrap:anywhere">${esc(tg.name)}</span></span>
         <button type="button" class="textbtn" style="padding:0 10px" data-a="editTag" data-v="${tg.id}">Edit</button></div>`).join('')}</div>` : ''}
       ${ui.tagForm ? tagForm() : ''}
@@ -492,11 +512,11 @@ function tasksScreen() {
   return `<div class="scroll">
     <header class="head"><div><div class="sub">${dayLabel(t)}, ${shortDate(t)}</div><h1>Tasks</h1></div></header>
     <div style="display:flex;gap:8px;align-items:center">${ui.sheet ? '<div class="grow"></div>' : `<button type="button" class="btn soft grow" data-a="openSheet">+ New task</button>`}<button type="button" class="filterbtn" style="${ui.rangeOpen ? INVERT : ''}" data-a="toggleRange" aria-expanded="${ui.rangeOpen}" aria-label="Show: ${RANGES[range]}">${svg(NAV_ICONS.work, 16)}${RANGES[range]}</button>${filterBtn(ui.taskFilters, ui.taskFilterOpen, 'toggleTaskFilter')}</div>
-    ${ui.rangeOpen ? `<div class="wrap">${Object.entries(RANGES).map(([k, l]) => `<button type="button" class="pill" style="padding:0 14px;${k === range ? INVERT + ';border-color:var(--text)' : 'background:var(--surface);border-color:var(--surface)'}" data-a="setRange" data-v="${k}" aria-pressed="${k === range}">${k === 'month' ? 'Month · to ' + shortDate(rangeEnd(t, 'month')) : l}</button>`).join('')}</div>` : ''}
+    ${ui.rangeOpen ? `<div class="wrap" data-anim="range">${Object.entries(RANGES).map(([k, l]) => `<button type="button" class="pill" style="padding:0 14px;${k === range ? INVERT + ';border-color:var(--text)' : 'background:var(--surface);border-color:var(--surface)'}" data-a="setRange" data-v="${k}" aria-pressed="${k === range}">${k === 'month' ? 'Month · to ' + shortDate(rangeEnd(t, 'month')) : l}</button>`).join('')}</div>` : ''}
     ${ui.taskFilterOpen ? filterPills(ui.taskFilters, 'setTaskFilter', true) : ''}
     ${sheet}
     ${groups.length ? groups.map(g => `<section class="list"><h2>${dayLabel(g.date)}</h2>${g.items.map(({ x, date, shift }) => { if (shift) return shiftRow(date, shift); const done = isDone(x, date); return `
-      <div class="row${done ? ' done' : ''}">
+      <div class="row${done ? ' done' : ''}${done && ui.justTicked === x.id + '|' + date ? ' ticked' : ''}" data-anim="t-${x.id}-${date}">
         <button type="button" class="hit" data-a="toggleTask" data-v="${x.id}|${date}" aria-pressed="${done}">${chip(x.cat, x.emoji)}<div class="rt"><b>${esc(x.text)}</b><small>${esc(taskSub(x))}</small></div><div class="check">${done ? CHECK : ''}</div></button>
         <button type="button" class="del" style="margin-right:-4px" data-a="editTask" data-v="${x.id}" aria-label="Edit ${esc(x.text)}">${svg('<path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-4-4L4 16z"/>', 16)}</button>
         <button type="button" class="del" data-a="delTask" data-v="${x.id}" aria-label="Delete ${esc(x.text)}">${svg('<path d="M6 6l12 12M18 6L6 18"/>', 16)}</button>
@@ -511,14 +531,14 @@ function emptyTasksMsg(range, end) {
 // Not tappable; shows only a gold tick once the shift has ended. The spacers keep the tick lined up with task rows.
 function shiftRow(ds, sh) {
   const done = shiftDone(ds, sh);
-  return `<div class="row${done ? ' done' : ''}">
+  return `<div class="row${done ? ' done' : ''}" data-anim="s-${ds}">
     <div class="hit" style="cursor:default">${chip('work')}<div class="rt"><b>Work shift</b><small>Work · ${shiftTimes(sh)}</small></div>${done ? `<div class="check" role="img" aria-label="Done">${CHECK}</div>` : '<span style="width:28px;flex-shrink:0" aria-hidden="true"></span>'}</div>
     <span class="rowpad" aria-hidden="true"></span>
   </div>`;
 }
 function tagForm() {
   const f = ui.tagForm;
-  return `<div style="display:flex;flex-direction:column;gap:10px;background:var(--raised);border-radius:16px;padding:12px" aria-label="${f.id ? 'Edit tag' : 'New tag'}">
+  return `<div style="display:flex;flex-direction:column;gap:10px;background:var(--raised);border-radius:16px;padding:12px" aria-label="${f.id ? 'Edit tag' : 'New tag'}" data-anim="tagform-${f.id || 'new'}">
     <label class="lbl" for="tagname">${f.id ? 'Edit tag' : 'New tag'}</label>
     <input id="tagname" class="field" type="text" maxlength="20" placeholder="Tag name, like Bills" value="${esc(f.name)}" autocomplete="off">
     <div class="wrap" role="group" aria-label="Tag colour">${Object.entries(TAG_COLORS).map(([k, c]) => `<button type="button" data-a="tagColor" data-v="${k}" aria-label="${k}" aria-pressed="${f.color === k}"
@@ -544,7 +564,7 @@ function workScreen() {
       return `<div class="box"><button type="button" class="hit" data-a="openDay" data-v="${d}" aria-expanded="${open}">
         <div class="weekday${s ? ' on' : ''}${d === t ? ' now' : ''}"><small>${DOW[dt.getDay()].toUpperCase()}</small><b>${dt.getDate()}</b></div>
         <div class="rt"><b style="${s ? '' : 'color:var(--muted)'}">${s ? fmtTime(s.start) + ' – ' + fmtTime(s.end) : 'Off'}</b>${d === t ? '<small>Today</small>' : ''}</div></button>
-        ${open ? `<div class="expand"><div class="timerow">
+        ${open ? `<div class="expand" data-anim="day-${d}"><div class="timerow">
           <label class="sr" for="ws">Start time</label><input id="ws" class="field" type="time" value="${ui.workStart}" data-bind="workStart">
           <span class="lbl">to</span>
           <label class="sr" for="we">End time</label><input id="we" class="field" type="time" value="${ui.workEnd}" data-bind="workEnd"></div>
@@ -595,9 +615,9 @@ function gymScreen() {
       const line = pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
       const last = pts[pts.length - 1], gain = v[v.length - 1] - v[0];
       chart = `<div class="calhead" style="align-items:flex-end"><div><div class="lbl">${esc(ex)}</div><div style="font-size:30px;font-weight:800">${v[v.length - 1]} lb</div></div>${hist.length > 1 ? `<div class="stat" style="color:${gain >= 0 ? 'var(--ok)' : 'var(--bad)'}">${gain >= 0 ? '+' : ''}${gain} lb</div>` : ''}</div>
-        <svg viewBox="0 0 310 170" width="100%" role="img" aria-label="${esc(ex)} weight, ${v.join(', ')} pounds">
+        <svg viewBox="0 0 310 170" width="100%" data-anim="chart-${esc(ex)}" role="img" aria-label="${esc(ex)} weight, ${v.join(', ')} pounds">
           <line x1="10" y1="20" x2="300" y2="20" style="stroke:var(--soft)"/><line x1="10" y1="85" x2="300" y2="85" style="stroke:var(--soft)"/><line x1="10" y1="150" x2="300" y2="150" style="stroke:var(--soft)"/>
-          ${hist.length > 1 ? `<polygon points="${line} ${last[0].toFixed(1)},150 ${pts[0][0].toFixed(1)},150" style="fill:var(--accent)" fill-opacity=".10"/><polyline points="${line}" fill="none" style="stroke:var(--accent)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>` : ''}
+          ${hist.length > 1 ? `<polygon points="${line} ${last[0].toFixed(1)},150 ${pts[0][0].toFixed(1)},150" style="fill:var(--accent)" fill-opacity=".10"/><polyline class="line" pathLength="1" points="${line}" fill="none" style="stroke:var(--accent)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>` : ''}
           <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="6" style="fill:var(--accent);stroke:var(--surface)" stroke-width="3"/>
         </svg>
         <div style="display:grid;grid-template-columns:repeat(${hist.length},minmax(0,1fr));text-align:center;font-size:10px;font-weight:700;color:var(--text2)">${hist.map(p => `<div style="${p.logged ? '' : 'color:var(--muted)'}"><b style="display:block;font-size:11px">Wk ${p.week}</b>${shortDate(p.start)}</div>`).join('')}</div>
@@ -619,7 +639,7 @@ function gymScreen() {
       return `<div class="box"><button type="button" class="hit" data-a="openEx" data-v="${i}" aria-expanded="${open}">
         <div class="rt"><b>${esc(n)}</b></div>
         <div style="font-size:16px;font-weight:800;color:var(--accent);white-space:nowrap">${w == null ? '—' : w} lb</div></button>
-        ${open ? `<div class="expand">
+        ${open ? `<div class="expand" data-anim="ex-${i}">
           <label class="lbl" for="exn">Name</label><input id="exn" class="field" value="${esc(ui.exName)}" data-bind="exName" autocomplete="off">          <label class="lbl" for="wt">Weight (lb)</label><div class="stepper">
           <button type="button" class="round" data-a="step" data-v="-5" aria-label="Lower 5 pounds">−</button>
           <input id="wt" class="field" type="number" inputmode="decimal" step="2.5" min="0" value="${esc(ui.gymDraft)}" data-bind="gymDraft">
@@ -627,7 +647,7 @@ function gymScreen() {
           <div style="display:flex;gap:8px"><button type="button" class="btn main grow" data-a="saveEx" data-v="${i}">Save</button><button type="button" class="btn soft" data-a="delEx" data-v="${i}">Delete</button></div></div>` : ''}
       </div>`;
     }).join('')}
-    ${ui.addingEx ? `<section class="card"><h2 style="font-size:16px">Add an exercise</h2>
+    ${ui.addingEx ? `<section class="card" data-anim="addex"><h2 style="font-size:16px">Add an exercise</h2>
       <label class="sr" for="nex">Exercise name</label><input id="nex" class="field" placeholder="Exercise name" value="${esc(ui.newEx)}" data-bind="newEx" autocomplete="off">
       <div style="display:flex;gap:8px"><button type="button" class="btn main grow" data-a="addEx">Add exercise</button><button type="button" class="btn soft" data-a="cancelEx">Cancel</button></div></section>`
       : `<button type="button" class="btn soft" data-a="startEx">+ Add an exercise</button>`}
@@ -655,12 +675,12 @@ function schoolScreen() {
         <div class="chip" style="width:50px;font-size:12px;${passed ? 'background:#1A73E8;color:#fff' : `background:${cat('school').bg};color:${cat('school').fg}`}">${esc(c.code)}</div>
         <div class="rt" style="gap:8px"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(c.name)}</b><small>${passed ? 'Passed' : c.pct + '%'}</small></div>
         <div class="bar"><i style="width:${c.pct}%"></i></div></div></button>
-        ${open ? `<div class="expand"><label class="lbl" for="pr${i}">Progress: <span id="prl">${c.pct}</span>%</label>
+        ${open ? `<div class="expand" data-anim="class-${i}"><label class="lbl" for="pr${i}">Progress: <span id="prl">${c.pct}</span>%</label>
           <input id="pr${i}" type="range" min="0" max="100" step="5" value="${c.pct}" data-change="classPct" data-v="${i}">
           <div style="display:flex;gap:8px"><button type="button" class="btn main grow" data-a="classPass" data-v="${i}">Mark passed</button><button type="button" class="btn soft" data-a="classReset" data-v="${i}">Reset</button><button type="button" class="btn soft" data-a="classDel" data-v="${i}" aria-label="Remove ${esc(c.code)}">Remove</button></div></div>` : ''}
       </div>`;
     }).join('')}
-    ${ui.addingClass ? `<section class="card"><h2 style="font-size:16px">Add a class</h2>
+    ${ui.addingClass ? `<section class="card" data-anim="addclass"><h2 style="font-size:16px">Add a class</h2>
       <label class="sr" for="nc">Course code</label><input id="nc" class="field" placeholder="Code, like D288" value="${esc(ui.newCode)}" data-bind="newCode">
       <label class="sr" for="nn">Course name</label><input id="nn" class="field" placeholder="Class name" value="${esc(ui.newName)}" data-bind="newName">
       <div style="display:flex;gap:8px"><button type="button" class="btn main grow" data-a="addClass">Add class</button><button type="button" class="btn soft" data-a="cancelClass">Cancel</button></div></section>`
@@ -713,7 +733,7 @@ function newsScreen() {
     ? { wrestling: ['WREST', 'background:rgba(252,173,112,.16);color:#FCAD70'], games: ['GAMES', 'background:rgba(138,180,248,.16);color:#8AB4F8'], baseball: ['MLB', 'background:rgba(129,201,149,.16);color:#81C995'] }
     : { wrestling: ['WREST', 'background:#FEEFE3;color:#B45309'], games: ['GAMES', 'background:#E8F0FE;color:#1A73E8'], baseball: ['MLB', 'background:#E6F4EA;color:#188038'] };
   let body;
-  if (items.length) body = items.map(n => `<a class="row" href="${esc(n.link)}" target="_blank" rel="noopener">
+  if (items.length) body = items.map(n => `<a class="row" data-anim="n-${esc(n.link)}" href="${esc(n.link)}" target="_blank" rel="noopener">
       ${(lg => lg ? `<div class="chip" style="background:${lg[1]}!important;padding:${lg[2]}px;box-shadow:inset 0 0 0 1px var(--line)"><img src="${lg[0]}" alt="" style="width:100%;height:100%;object-fit:contain"></div>`
         : `<div class="chip" style="${(CHIP[n.cat] || CHIP.games)[1]}">${(CHIP[n.cat] || CHIP.games)[0]}</div>`)(LOGOS[newsLogo(n)])}
       <div class="rt"><b style="line-height:1.3">${esc(n.title)}</b><small>${esc(n.source)}${n.date ? ' · ' + timeAgo(new Date(newsTime(n)).toISOString()) : ''}</small></div></a>`).join('');
@@ -840,6 +860,7 @@ const A = {
     const [id, ds] = v.split('|'), x = S.tasks.find(t => t.id === id); if (!x) return;
     if (x.repeat) x.doneOn = isDone(x, ds) ? x.doneOn.filter(d => d !== ds) : (x.doneOn || []).concat(ds);
     else x.done = !x.done;
+    if (isDone(x, ds)) ui.justTicked = v;
     save();
   },
   delTask: v => {
@@ -945,12 +966,21 @@ function render() {
   const oldPill = app.querySelector('nav.tabs .glide');
   const fromX = oldPill ? new DOMMatrix(getComputedStyle(oldPill).transform).m41 : null;
   const nav = `<nav class="tabs" aria-label="Sections"><span class="glide" style="--i:${TAB_ORDER.indexOf(r)}"></span>${TAB_ORDER.map(k => `<a href="#${k}" class="${k === r ? 'on' : ''}"${k === r ? ' aria-current="page"' : ''}>${svg(NAV_ICONS[k], 22, 2)}${SECTIONS[k].title}</a>`).join('')}</nav>`;
-  const toast = ui.undo ? `<div class="toast" role="status">${ui.undo.ex ? 'Exercise' : 'Task'} deleted<button type="button" data-a="undo">Undo</button></div>` : '';
+  const toast = ui.undo ? `<div class="toast" role="status" data-anim="toast">${ui.undo.ex ? 'Exercise' : 'Task'} deleted<button type="button" data-a="undo">Undo</button></div>` : '';
   app.innerHTML = screen + nav + toast;
   // The nav is rebuilt every render, so start the new pill where the old one was and let it slide.
   const pill = app.querySelector('nav.tabs .glide');
   if (fromX !== null) { pill.style.transform = `translateX(${fromX}px)`; pill.getBoundingClientRect(); pill.style.transform = ''; }
   const sc = app.querySelector('.scroll'); if (sc && keepScroll) sc.scrollTop = keepScroll;
+  // Everything is rebuilt on each render, so only animate what wasn't on screen last time.
+  const seen = render._anims || new Set(), shownNow = new Set();
+  app.querySelectorAll('[data-anim]').forEach(el => {
+    shownNow.add(el.dataset.anim);
+    if (render._route === r && !seen.has(el.dataset.anim)) el.classList.add('pop');
+  });
+  if (render._route !== r && sc) sc.classList.add('enter');
+  render._anims = shownNow;
+  ui.justTicked = null;
   render._route = r;
   render._timeKey = timeKey();
   if (r === 'news') loadNews(false);
