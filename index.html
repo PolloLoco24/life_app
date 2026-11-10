@@ -346,14 +346,12 @@ function workScreen() {
   const t = todayStr();
   const ws = ui.weekStart || weekStartOf(t);
   const days = Array.from({ length: 7 }, (_, i) => addDays(ws, i));
-  let hrs = 0, count = 0;
-  days.forEach(d => { const s = S.shifts[d]; if (s) { hrs += hoursBetween(s.start, s.end); count++; } });
+  let hrs = 0;
+  days.forEach(d => { const s = S.shifts[d]; if (s) hrs += hoursBetween(s.start, s.end); });
   const range = shortDate(days[0]) + ' – ' + (parse(days[6]).getMonth() === parse(days[0]).getMonth() ? parse(days[6]).getDate() : shortDate(days[6]));
   return `<div class="scroll">
-    <header class="head"><div><div class="sub">${count} shift${count === 1 ? '' : 's'} this week</div><h1>Work</h1></div><div class="stat">${Math.round(hrs * 10) / 10} hrs</div></header>
-    <div class="calhead"><button type="button" class="iconbtn" style="background:#fff" data-a="week" data-v="-7" aria-label="Previous week">${svg('<path d="M15 6l-6 6 6 6"/>', 16)}</button><h2>${range}</h2><button type="button" class="iconbtn" style="background:#fff" data-a="week" data-v="7" aria-label="Next week">${svg('<path d="M9 6l6 6-6 6"/>', 16)}</button></div>
-    <div class="note" style="margin-top:-8px">Tap a day to add or change a shift.</div>
-    <div class="list">${days.map(d => {
+    <header class="head"><div><h1>Work</h1></div><div class="stat">${Math.round(hrs * 10) / 10} hrs</div></header>
+    <div class="calhead"><button type="button" class="iconbtn" style="background:#fff" data-a="week" data-v="-7" aria-label="Previous week">${svg('<path d="M15 6l-6 6 6 6"/>', 16)}</button><h2>${range}</h2><button type="button" class="iconbtn" style="background:#fff" data-a="week" data-v="7" aria-label="Next week">${svg('<path d="M9 6l6 6-6 6"/>', 16)}</button></div>    <div class="list">${days.map(d => {
       const s = S.shifts[d], open = ui.workOpen === d, dt = parse(d);
       return `<div class="box"><button type="button" class="hit" data-a="openDay" data-v="${d}" aria-expanded="${open}">
         <div class="weekday${s ? ' on' : ''}${d === t ? ' now' : ''}"><small>${DOW[dt.getDay()].toUpperCase()}</small><b>${dt.getDate()}</b></div>
