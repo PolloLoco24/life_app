@@ -18,8 +18,8 @@
 <style>
 *{box-sizing:border-box}
 /* Shared colours; the dark set follows the phone's light/dark setting. */
-:root{color-scheme:light dark;--bg:#F1F3F4;--surface:#fff;--raised:#F1F3F4;--fill:#E8EAED;--line:#DADCE0;--text:#202124;--text2:#5F6368;--muted:#80868B;--onfg:#fff;--ok:#188038;--bad:#D93025;--shadow:rgba(60,64,67,.06);--doneBg:#FFF6DA;--doneLine:#E8C25A;--doneText:#8A6400}
-@media (prefers-color-scheme:dark){:root{--bg:#121314;--surface:#1F2023;--raised:#2A2B2E;--fill:#303134;--line:#3C4043;--text:#E8EAED;--text2:#9AA0A6;--muted:#80868B;--onfg:#202124;--ok:#81C995;--bad:#F28B82;--shadow:rgba(0,0,0,.35);--doneBg:rgba(253,214,99,.10);--doneLine:#8A6A12;--doneText:#FDD663}}
+:root{color-scheme:light dark;--bg:#F1F3F4;--surface:#fff;--raised:#F1F3F4;--fill:#E8EAED;--line:#DADCE0;--text:#202124;--text2:#5F6368;--muted:#80868B;--onfg:#fff;--ok:#188038;--bad:#D93025;--shadow:rgba(60,64,67,.06);--doneBg:#FFF6DA;--doneLine:#E8C25A;--doneText:#8A6400;--lateBg:rgba(217,48,37,.06)}
+@media (prefers-color-scheme:dark){:root{--bg:#121314;--surface:#1F2023;--raised:#2A2B2E;--fill:#303134;--line:#3C4043;--text:#E8EAED;--text2:#9AA0A6;--muted:#80868B;--onfg:#202124;--ok:#81C995;--bad:#F28B82;--shadow:rgba(0,0,0,.35);--doneBg:rgba(253,214,99,.10);--doneLine:#8A6A12;--doneText:#FDD663;--lateBg:rgba(242,139,130,.10)}}
 html,body{margin:0;height:100%;background:var(--bg)}
 body{color:var(--text);font-family:Nunito,system-ui,-apple-system,sans-serif;-webkit-tap-highlight-color:transparent;overscroll-behavior:none}
 button,input{font-family:inherit}
@@ -60,6 +60,8 @@ h2{margin:0;font-size:18px;font-weight:800}
 .list{display:flex;flex-direction:column;gap:10px}
 .row{background:var(--surface);border-radius:18px;padding:12px 16px;min-height:64px;display:flex;align-items:center;gap:14px;box-shadow:0 2px 8px var(--shadow);border:2px solid transparent;width:100%;text-align:left;font:inherit;color:inherit}
 .row.done{background:var(--doneBg);border-color:var(--doneLine);box-shadow:0 2px 10px rgba(201,151,28,.18)}
+.row.late{background:var(--lateBg);border-color:var(--bad)}
+.row.late .rt small{color:var(--bad)}
 .row .hit{flex:1;min-width:0;display:flex;align-items:center;gap:14px;background:none;border:none;padding:0;text-align:left;color:inherit;cursor:pointer;min-height:44px}
 .chip{width:44px;height:44px;border-radius:14px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;letter-spacing:.5px}
 .row.done .chip{background:#F7D774!important;color:#6B4E00!important}
@@ -245,7 +247,7 @@ if (S.name === 'Ray') { S.name = 'Rey'; save(); }
 const ui = {
   plannerSel: null, plannerMonth: null, filters: [], filterOpen: false, monthOpen: false, pickY: null,
   taskFilters: [], taskFilterOpen: false, rangeOpen: false, tagsOpen: false, tagForm: null, tagMsg: '',
-  sheet: false, editing: null, draft: '', tag: 'tasks', workout: null, emoji: null, repeat: null, pickDate: null, pickMonth: null,
+  sheet: false, editing: null, draft: '', time: '', tag: 'tasks', workout: null, emoji: null, repeat: null, pickDate: null, pickMonth: null,
   weekStart: null, workOpen: null, workStart: '09:00', workEnd: '17:00',
   split: null, gymView: 'workout', gymOpen: null, gymDraft: '', gymStart: '', exName: '', addingEx: false, newEx: '', chartEx: null,
   schoolOpen: null, addingClass: false, newCode: '', newName: '',
@@ -363,7 +365,12 @@ function shiftEndMs(ds, sh) {
 }
 const shiftDone = (ds, sh) => Date.now() >= shiftEndMs(ds, sh);
 const shiftTimes = sh => fmtTime(sh.start) + ' – ' + fmtTime(sh.end);
-const taskSub = t => cat(t.cat).label + (t.workout ? ' · ' + WK[t.workout] : '') + (t.repeat ? ' · ' + REPEAT[t.repeat] : '');
+// A timed task that isn't ticked off by its time on that day counts as late.
+function dueMs(ds, time) { const [h, m] = time.split(':').map(Number), d = parse(ds); d.setHours(h, m, 0, 0); return d.getTime(); }
+const isLate = (t, ds) => !!t.time && !isDone(t, ds) && Date.now() >= dueMs(ds, t.time);
+// Sort key within a day: timed things by time (shifts by start), untimed last.
+const timeOrder = e => e.shift ? e.shift.start : (e.x && e.x.time) || '99:99';
+const taskSub = t => cat(t.cat).label + (t.time ? ' · ' + fmtTime(t.time) : '') + (t.workout ? ' · ' + WK[t.workout] : '') + (t.repeat ? ' · ' + REPEAT[t.repeat] : '');
 
 function chip(k, emoji) {
   const c = cat(k);
@@ -373,13 +380,13 @@ function chip(k, emoji) {
 function itemsOn(ds) {
   const out = [];
   const sh = S.shifts[ds];
-  if (sh && shown('work')) out.push({ cat: 'work', title: 'Work shift', sub: 'Work · ' + shiftTimes(sh), done: shiftDone(ds, sh) });
+  if (sh && shown('work')) out.push({ cat: 'work', title: 'Work shift', sub: 'Work · ' + shiftTimes(sh), done: shiftDone(ds, sh), order: sh.start, n: -1 });
   S.tasks.filter(t => shown(t.cat) && occursOn(t, ds))
-    .forEach(t => out.push({ cat: t.cat, emoji: t.emoji, title: t.text, sub: taskSub(t), done: isDone(t, ds) }));
-  return out;
+    .forEach(t => out.push({ cat: t.cat, emoji: t.emoji, title: t.text, sub: taskSub(t), done: isDone(t, ds), late: isLate(t, ds), order: t.time || '99:99', n: t.created }));
+  return out.sort((a, b) => a.order.localeCompare(b.order) || a.n - b.n);
 }
 function staticRow(it, key) {
-  return `<div class="row${it.done ? ' done' : ''}"${key ? ` data-anim="p-${esc(key)}"` : ''}>${chip(it.cat, it.emoji)}<div class="rt"><b>${esc(it.title)}</b><small>${esc(it.sub)}</small></div>${it.done ? `<div class="check" role="img" aria-label="Done">${CHECK}</div>` : ''}</div>`;
+  return `<div class="row${it.done ? ' done' : ''}${it.late ? ' late' : ''}"${key ? ` data-anim="p-${esc(key)}"` : ''}>${chip(it.cat, it.emoji)}<div class="rt"><b>${esc(it.title)}</b><small>${esc(it.sub)}</small></div>${it.done ? `<div class="check" role="img" aria-label="Done">${CHECK}</div>` : ''}</div>`;
 }
 function calendar(y, m, opts) {
   const first = new Date(y, m, 1).getDay(), count = new Date(y, m + 1, 0).getDate(), t = todayStr();
@@ -469,7 +476,7 @@ function tasksScreen() {
     .filter(ds => ds >= t || (ds === addDays(t, -1) && !shiftDone(ds, S.shifts[ds]))).map(ds => ({ shift: S.shifts[ds], date: ds })) : [];
   const range = RANGES[S.taskRange] ? S.taskRange : 'month', end = rangeEnd(t, range);
   const upcoming = S.tasks.map(x => ({ x, date: nextOn(x, t) })).filter(e => e.date && shown(e.x.cat, ui.taskFilters)).concat(shifts)
-    .filter(e => e.date <= end).sort((a, b) => a.date.localeCompare(b.date) || !!b.shift - !!a.shift || a.x.created - b.x.created);
+    .filter(e => e.date <= end).sort((a, b) => a.date.localeCompare(b.date) || timeOrder(a).localeCompare(timeOrder(b)) || !!b.shift - !!a.shift || a.x.created - b.x.created);
   const groups = [];
   upcoming.forEach(e => { const g = groups[groups.length - 1]; if (g && g.date === e.date) g.items.push(e); else groups.push({ date: e.date, items: [e] }); });
   let sheet = '';
@@ -478,7 +485,7 @@ function tasksScreen() {
     const pmn = ui.pickMonth || { y: parse(pd).getFullYear(), m: parse(pd).getMonth() };
     const needW = ui.tag === 'gym' && !ui.workout;
     const title = ui.editing ? 'Edit task' : 'New task';
-    const go = needW ? 'Pick a workout first' : ui.editing ? 'Save changes' : (ui.repeat ? 'Add, starting ' : 'Add for ') + dayLabel(pd);
+    const go = needW ? 'Pick a workout first' : ui.editing ? 'Save changes' : (ui.repeat ? 'Add, starting ' : 'Add for ') + dayLabel(pd) + (ui.time ? ' at ' + fmtTime(ui.time) : '');
     sheet = `<section class="card" aria-label="${title}" data-anim="sheet-${ui.editing || 'new'}">
       <div class="calhead"><h2 style="font-size:16px">${title}</h2><button type="button" class="iconbtn" data-a="closeSheet" aria-label="Close">${svg('<path d="M6 6l12 12M18 6L6 18"/>', 16)}</button></div>
       <label class="sr" for="draft">Task name</label>
@@ -499,6 +506,8 @@ function tasksScreen() {
       ${emojiAllowed(ui.tag) ? `<label class="lbl" for="emo">Emoji <span style="font-weight:700">(optional)</span></label>
         <input id="emo" class="field" type="text" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="done" placeholder="🙂"
           value="${esc(ui.emoji || '')}" style="width:64px;text-align:center;font-size:26px;padding:0">` : ''}
+      <label class="lbl" for="ttime">Time <span style="font-weight:700">(optional)</span></label>
+      <div class="timerow"><input id="ttime" class="field" type="time" value="${esc(ui.time || '')}" data-change="taskTime">${ui.time ? '<button type="button" class="btn soft" data-a="clearTime">Clear</button>' : ''}</div>
       <div class="lbl">Repeat</div>
       <div class="pills" style="grid-template-columns:repeat(4,minmax(0,1fr))">${[['', 'Never'], ['day', 'Daily'], ['week', 'Weekly'], ['month', 'Monthly']].map(([v, l]) => {
         const on = (ui.repeat || '') === v;
@@ -516,7 +525,7 @@ function tasksScreen() {
     ${ui.taskFilterOpen ? filterPills(ui.taskFilters, 'setTaskFilter', true) : ''}
     ${sheet}
     ${groups.length ? groups.map(g => `<section class="list"><h2>${dayLabel(g.date)}</h2>${g.items.map(({ x, date, shift }) => { if (shift) return shiftRow(date, shift); const done = isDone(x, date); return `
-      <div class="row${done ? ' done' : ''}${done && ui.justTicked === x.id + '|' + date ? ' ticked' : ''}" data-anim="t-${x.id}-${date}">
+      <div class="row${done ? ' done' : ''}${isLate(x, date) ? ' late' : ''}${done && ui.justTicked === x.id + '|' + date ? ' ticked' : ''}" data-anim="t-${x.id}-${date}">
         <button type="button" class="hit" data-a="toggleTask" data-v="${x.id}|${date}" aria-pressed="${done}">${chip(x.cat, x.emoji)}<div class="rt"><b>${esc(x.text)}</b><small>${esc(taskSub(x))}</small></div><div class="check">${done ? CHECK : ''}</div></button>
         <button type="button" class="del" style="margin-right:-4px" data-a="editTask" data-v="${x.id}" aria-label="Edit ${esc(x.text)}">${svg('<path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-4-4L4 16z"/>', 16)}</button>
         <button type="button" class="del" data-a="delTask" data-v="${x.id}" aria-label="Delete ${esc(x.text)}">${svg('<path d="M6 6l12 12M18 6L6 18"/>', 16)}</button>
@@ -826,10 +835,10 @@ const A = {
   pickMonth: v => { ui.plannerMonth = { y: ui.pickY, m: Number(v) }; ui.monthOpen = false; ui.plannerSel = ui.pickY + '-' + pad(Number(v) + 1) + '-01'; },
   goToday: () => { ui.plannerMonth = null; ui.plannerSel = null; ui.monthOpen = false; },
 
-  openSheet: () => { Object.assign(ui, { sheet: true, editing: null, draft: '', pickDate: todayStr(), pickMonth: null, workout: null, emoji: null, repeat: null, tagsOpen: false, tagForm: null, tagMsg: '' }); A._focusSheet(); },
+  openSheet: () => { Object.assign(ui, { sheet: true, editing: null, draft: '', time: '', pickDate: todayStr(), pickMonth: null, workout: null, emoji: null, repeat: null, tagsOpen: false, tagForm: null, tagMsg: '' }); A._focusSheet(); },
   editTask: v => {
     const x = S.tasks.find(t => t.id === v); if (!x) return;
-    Object.assign(ui, { sheet: true, editing: x.id, draft: x.text, tag: customTag(x.cat) || CATS[x.cat] ? x.cat : 'tasks', workout: x.workout || null, emoji: x.emoji || null, repeat: x.repeat || null, pickDate: x.date, pickMonth: null, tagsOpen: false, tagForm: null, tagMsg: '' });
+    Object.assign(ui, { sheet: true, editing: x.id, draft: x.text, time: x.time || '', tag: customTag(x.cat) || CATS[x.cat] ? x.cat : 'tasks', workout: x.workout || null, emoji: x.emoji || null, repeat: x.repeat || null, pickDate: x.date, pickMonth: null, tagsOpen: false, tagForm: null, tagMsg: '' });
     A._focusSheet();
   },
   _focusSheet: () => setTimeout(() => { const sc = document.querySelector('.scroll'); if (sc) sc.scrollTop = 0; const el = document.getElementById('draft'); if (el) el.focus(); }, 50),
@@ -837,6 +846,7 @@ const A = {
   setTag: v => { ui.tag = v; if (v !== 'gym') ui.workout = null; if (!emojiAllowed(v)) ui.emoji = null; },
   setWorkout: v => { ui.workout = v; },
   setRepeat: v => { ui.repeat = v || null; },
+  clearTime: () => { ui.time = ''; },
   pickDate: v => { ui.pickDate = v; },
   sheetMonth: v => {
     const base = ui.pickMonth || { y: parse(ui.pickDate || todayStr()).getFullYear(), m: parse(ui.pickDate || todayStr()).getMonth() };
@@ -847,13 +857,13 @@ const A = {
     const wk = ui.tag === 'gym' ? ui.workout : null;
     const text = ui.draft.trim() || (wk ? WK[wk] + ' day' : 'New task');
     const fields = { text, date: ui.pickDate || todayStr(), cat: ui.tag, workout: wk,
-      emoji: emojiAllowed(ui.tag) && ui.emoji ? ui.emoji : undefined, repeat: ui.repeat || undefined };
+      emoji: emojiAllowed(ui.tag) && ui.emoji ? ui.emoji : undefined, repeat: ui.repeat || undefined, time: ui.time || undefined };
     const existing = ui.editing && S.tasks.find(t => t.id === ui.editing);
     if (existing) Object.assign(existing, fields);
     else S.tasks.push({ id: uid(), ...fields, done: false, created: Date.now() });
     const x = existing || S.tasks[S.tasks.length - 1];
     if (x.repeat && !x.doneOn) x.doneOn = [];
-    save(); Object.assign(ui, { sheet: false, editing: null, draft: '', workout: null, emoji: null, repeat: null });
+    save(); Object.assign(ui, { sheet: false, editing: null, draft: '', time: '', workout: null, emoji: null, repeat: null });
   },
   // data-v is "id|date" so a repeating task can be ticked off for just that date.
   toggleTask: v => {
@@ -951,6 +961,7 @@ const A = {
 const CHANGE = {
   daysLeft: el => { const n = Math.max(0, parseInt(el.value, 10) || 0); S.school.termEnd = addDays(todayStr(), n); save(); },
   classPct: el => { S.school.courses[el.dataset.v].pct = Number(el.value); save(); },
+  taskTime: el => { ui.time = el.value; },
   restoreFile: el => { const f = el.files && el.files[0]; el.value = ''; if (f) f.text().then(t => { restoreBackup(t); render(); }); }
 };
 
@@ -1011,7 +1022,8 @@ darkMQ.addEventListener('change', render);
 // Redraw when a shift ends or the day changes while the app is open — but not mid-typing.
 function timeKey() {
   const t = todayStr();
-  return t + Object.keys(S.shifts).filter(ds => ds >= addDays(t, -1) && ds <= addDays(t, 1)).map(ds => ds + shiftDone(ds, S.shifts[ds])).join();
+  return t + Object.keys(S.shifts).filter(ds => ds >= addDays(t, -1) && ds <= addDays(t, 1)).map(ds => ds + shiftDone(ds, S.shifts[ds])).join()
+    + S.tasks.filter(x => x.time && occursOn(x, t)).map(x => x.id + isLate(x, t)).join();
 }
 setInterval(() => {
   const typing = document.activeElement && document.activeElement.matches('input, textarea, select');
