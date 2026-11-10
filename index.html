@@ -60,6 +60,7 @@ h2{margin:0;font-size:18px;font-weight:800}
 .pill .dot{width:7px;height:7px;border-radius:4px;flex-shrink:0}
 .lbl{font-size:14px;font-weight:800;color:#5F6368}
 .field{min-height:48px;border-radius:14px;border:2px solid #DADCE0;background:#fff;color:#202124;padding:0 14px;font:700 16px Nunito,system-ui,sans-serif;width:100%}
+#emo::placeholder{opacity:.3}
 .cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px}
 .cal .wd{text-align:center;font-size:12px;font-weight:800;color:#5F6368;padding:2px 0}
 .cal button{height:44px;border-radius:14px;border:none;background:transparent;font:800 14px Nunito,system-ui,sans-serif;color:#202124;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;padding:0}
@@ -215,7 +216,7 @@ if (S.name === 'Ray') { S.name = 'Rey'; save(); }
 /* ---------- screen state (not saved) ---------- */
 const ui = {
   plannerSel: null, plannerMonth: null, filter: 'all', filterOpen: false, monthOpen: false, pickY: null,
-  sheet: false, draft: '', tag: 'tasks', workout: null, pickDate: null, pickMonth: null,
+  sheet: false, draft: '', tag: 'tasks', workout: null, emoji: null, pickDate: null, pickMonth: null,
   weekStart: null, workOpen: null, workStart: '09:00', workEnd: '17:00',
   split: null, gymView: 'workout', gymOpen: null, gymDraft: '', gymStart: '', exName: '', addingEx: false, newEx: '', chartEx: null,
   schoolOpen: null, addingClass: false, newCode: '', newName: '',
@@ -231,17 +232,26 @@ const CHECK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" strok
 const route = () => { const r = location.hash.replace('#', ''); return SECTIONS[r] ? r : 'planner'; };
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
-function chip(cat) { const c = CATS[cat]; return `<div class="chip" style="background:${c.bg};color:${c.fg}">${c.short}</div>`; }
+// Keeps only the last emoji typed (so a new pick replaces the old one); flags, families and skin tones count as one.
+function pickEmoji(s) {
+  const parts = typeof Intl.Segmenter === 'function' ? [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(s)].map(x => x.segment) : Array.from(s);
+  return parts.filter(g => /\p{Extended_Pictographic}|\p{Regional_Indicator}|⃣/u.test(g)).pop() || '';
+}
+function chip(cat, emoji) {
+  const c = CATS[cat];
+  return emoji ? `<div class="chip" style="background:${c.bg};font-size:22px;letter-spacing:0" aria-hidden="true">${esc(emoji)}</div>`
+    : `<div class="chip" style="background:${c.bg};color:${c.fg}">${c.short}</div>`;
+}
 function itemsOn(ds, filter) {
   const out = [];
   const sh = S.shifts[ds];
   if (sh && (filter === 'all' || filter === 'work')) out.push({ cat: 'work', title: 'Work shift', sub: 'Work · ' + fmtTime(sh.start) + ' – ' + fmtTime(sh.end) });
   S.tasks.filter(t => t.date === ds && (filter === 'all' || t.cat === filter))
-    .forEach(t => out.push({ cat: t.cat, title: t.text, sub: CATS[t.cat].label + (t.workout ? ' · ' + WK[t.workout] : ''), done: t.done }));
+    .forEach(t => out.push({ cat: t.cat, emoji: t.emoji, title: t.text, sub: CATS[t.cat].label + (t.workout ? ' · ' + WK[t.workout] : ''), done: t.done }));
   return out;
 }
 function staticRow(it) {
-  return `<div class="row${it.done ? ' done' : ''}">${chip(it.cat)}<div class="rt"><b>${esc(it.title)}</b><small>${esc(it.sub)}</small></div>${it.done ? `<div class="check" role="img" aria-label="Done">${CHECK}</div>` : ''}</div>`;
+  return `<div class="row${it.done ? ' done' : ''}">${chip(it.cat, it.emoji)}<div class="rt"><b>${esc(it.title)}</b><small>${esc(it.sub)}</small></div>${it.done ? `<div class="check" role="img" aria-label="Done">${CHECK}</div>` : ''}</div>`;
 }
 function calendar(y, m, opts) {
   const first = new Date(y, m, 1).getDay(), count = new Date(y, m + 1, 0).getDate(), t = todayStr();
@@ -334,7 +344,6 @@ function restoreBackup(text) {
 function tasksScreen() {
   const t = todayStr();
   const upcoming = S.tasks.filter(x => x.date >= t).sort((a, b) => a.date.localeCompare(b.date) || a.created - b.created);
-  const done = upcoming.filter(x => x.done).length;
   const groups = [];
   upcoming.forEach(x => { const g = groups[groups.length - 1]; if (g && g.date === x.date) g.items.push(x); else groups.push({ date: x.date, items: [x] }); });
   let sheet = '';
@@ -355,17 +364,20 @@ function tasksScreen() {
         const on = ui.workout === w;
         return `<button type="button" class="pill" style="min-height:44px;${on ? 'background:#D93025;border-color:#D93025;color:#fff' : ''}" data-a="setWorkout" data-v="${w}" aria-pressed="${on}">${WK[w]}</button>`;
       }).join('')}</div>` : ''}
+      ${ui.tag === 'tasks' ? `<label class="lbl" for="emo">Emoji <span style="font-weight:700">(optional)</span></label>
+        <input id="emo" class="field" type="text" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="done" placeholder="🙂"
+          value="${esc(ui.emoji || '')}" style="width:64px;text-align:center;font-size:26px;padding:0">` : ''}
       <div class="calhead"><button type="button" class="iconbtn" data-a="sheetMonth" data-v="-1" aria-label="Previous month">${svg('<path d="M15 6l-6 6 6 6"/>', 16)}</button><div class="lbl">${MONTHS[pmn.m]} ${pmn.y}</div><button type="button" class="iconbtn" data-a="sheetMonth" data-v="1" aria-label="Next month">${svg('<path d="M9 6l6 6-6 6"/>', 16)}</button></div>
       ${calendar(pmn.y, pmn.m, { sel: pd, action: 'pickDate', disablePast: true })}
       <button type="button" class="btn main" data-a="addTask" ${needW ? 'disabled' : ''}>${needW ? 'Pick a workout first' : 'Add for ' + dayLabel(pd)}</button>
     </section>`;
   }
   return `<div class="scroll">
-    <header class="head"><div><div class="sub">${dayLabel(t)}, ${shortDate(t)}</div><h1>Tasks</h1></div>${upcoming.length ? `<div class="stat">${done}/${upcoming.length} done</div>` : ''}</header>
+    <header class="head"><div><div class="sub">${dayLabel(t)}, ${shortDate(t)}</div><h1>Tasks</h1></div></header>
     ${sheet}
     ${groups.length ? groups.map(g => `<section class="list"><h2>${dayLabel(g.date)}</h2>${g.items.map(x => `
       <div class="row${x.done ? ' done' : ''}">
-        <button type="button" class="hit" data-a="toggleTask" data-v="${x.id}" aria-pressed="${!!x.done}">${chip(x.cat)}<div class="rt"><b>${esc(x.text)}</b><small>${CATS[x.cat].label}${x.workout ? ' · ' + WK[x.workout] : ''}</small></div><div class="check">${x.done ? CHECK : ''}</div></button>
+        <button type="button" class="hit" data-a="toggleTask" data-v="${x.id}" aria-pressed="${!!x.done}">${chip(x.cat, x.emoji)}<div class="rt"><b>${esc(x.text)}</b><small>${CATS[x.cat].label}${x.workout ? ' · ' + WK[x.workout] : ''}</small></div><div class="check">${x.done ? CHECK : ''}</div></button>
         <button type="button" class="del" data-a="delTask" data-v="${x.id}" aria-label="Delete ${esc(x.text)}">${svg('<path d="M6 6l12 12M18 6L6 18"/>', 16)}</button>
       </div>`).join('')}</section>`).join('') : (ui.sheet ? '' : '<div class="empty">Nothing coming up. Tap “+ New task” to plan something.</div>')}
     ${ui.sheet ? '' : `<button type="button" class="btn soft" data-a="openSheet">+ New task</button>`}
@@ -613,9 +625,9 @@ const A = {
   pickMonth: v => { ui.plannerMonth = { y: ui.pickY, m: Number(v) }; ui.monthOpen = false; ui.plannerSel = ui.pickY + '-' + pad(Number(v) + 1) + '-01'; },
   goToday: () => { ui.plannerMonth = null; ui.plannerSel = null; ui.monthOpen = false; },
 
-  openSheet: () => { ui.sheet = true; ui.pickDate = todayStr(); ui.pickMonth = null; ui.workout = null; setTimeout(() => { const sc = document.querySelector('.scroll'); if (sc) sc.scrollTop = 0; const el = document.getElementById('draft'); if (el) el.focus(); }, 50); },
+  openSheet: () => { ui.sheet = true; ui.pickDate = todayStr(); ui.pickMonth = null; ui.workout = null; ui.emoji = null; setTimeout(() => { const sc = document.querySelector('.scroll'); if (sc) sc.scrollTop = 0; const el = document.getElementById('draft'); if (el) el.focus(); }, 50); },
   closeSheet: () => { ui.sheet = false; },
-  setTag: v => { ui.tag = v; if (v !== 'gym') ui.workout = null; },
+  setTag: v => { ui.tag = v; if (v !== 'gym') ui.workout = null; if (v !== 'tasks') ui.emoji = null; },
   setWorkout: v => { ui.workout = v; },
   pickDate: v => { ui.pickDate = v; },
   sheetMonth: v => {
@@ -626,8 +638,9 @@ const A = {
     if (ui.tag === 'gym' && !ui.workout) return;
     const wk = ui.tag === 'gym' ? ui.workout : null;
     const text = ui.draft.trim() || (wk ? WK[wk] + ' day' : 'New task');
-    S.tasks.push({ id: uid(), text, date: ui.pickDate || todayStr(), cat: ui.tag, workout: wk, done: false, created: Date.now() });
-    save(); ui.sheet = false; ui.draft = ''; ui.workout = null;
+    const emoji = ui.tag === 'tasks' && ui.emoji ? ui.emoji : undefined;
+    S.tasks.push({ id: uid(), text, date: ui.pickDate || todayStr(), cat: ui.tag, workout: wk, emoji, done: false, created: Date.now() });
+    save(); ui.sheet = false; ui.draft = ''; ui.workout = null; ui.emoji = null;
   },
   toggleTask: v => { const x = S.tasks.find(t => t.id === v); if (x) { x.done = !x.done; save(); } },
   delTask: v => { const i = S.tasks.findIndex(t => t.id === v); if (i > -1) { ui.undo = { task: S.tasks[i], at: i }; S.tasks.splice(i, 1); save(); A._undoTimer(); } },
@@ -747,6 +760,8 @@ document.addEventListener('click', e => {
 document.addEventListener('input', e => {
   const el = e.target;
   if (el.dataset.bind) ui[el.dataset.bind] = el.value;
+  // Updates the box in place (no re-render) so the emoji keyboard stays open.
+  if (el.id === 'emo') { const e = pickEmoji(el.value); ui.emoji = e || null; if (el.value !== e) el.value = e; }
   if (el.dataset.change === 'classPct') { const l = document.getElementById('prl'); if (l) l.textContent = el.value; }
 });
 document.addEventListener('change', e => { const el = e.target; if (el.dataset.change && CHANGE[el.dataset.change]) { CHANGE[el.dataset.change](el); render(); } });
