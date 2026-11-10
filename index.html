@@ -543,14 +543,20 @@ async function loadNews(force) {
   const results = await Promise.allSettled(FEEDS.map(f =>
     fetch('https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(f.url))
       .then(r => r.json())
-      .then(j => (j.status === 'ok' ? j.items : []).slice(0, 10).map(it => {
-        const d = document.createElement('textarea'); d.innerHTML = it.title || '';
-        const tags = (Array.isArray(it.categories) ? it.categories : []).filter(c => typeof c === 'string').slice(0, 10);
-        return { cat: f.cat, source: f.source, title: d.value, link: it.link, date: it.pubDate || '', tags };
-      }))));
-  const items = results.filter(r => r.status === 'fulfilled').flatMap(r => r.value).filter(i => i.title && /^https?:/.test(i.link || ''));
+      .then(j => {
+        if (j.status !== 'ok') throw new Error(j.message || 'feed failed');
+        return j.items.slice(0, 10).map(it => {
+          const d = document.createElement('textarea'); d.innerHTML = it.title || '';
+          const tags = (Array.isArray(it.categories) ? it.categories : []).filter(c => typeof c === 'string').slice(0, 10);
+          return { cat: f.cat, source: f.source, title: d.value, link: it.link, date: it.pubDate || '', tags };
+        });
+      })));
+  const fresh = results.filter(r => r.status === 'fulfilled').flatMap(r => r.value).filter(i => i.title && /^https?:/.test(i.link || ''));
+  // A source that failed this time keeps the headlines it had before.
+  const failed = FEEDS.filter((f, i) => results[i].status === 'rejected').map(f => f.source);
+  const items = fresh.concat(S.news.items.filter(n => failed.includes(n.source)));
   items.sort((a, b) => new Date((b.date || '').replace(' ', 'T')) - new Date((a.date || '').replace(' ', 'T')));
-  if (items.length) { S.news = { items: items.slice(0, FEEDS.length * 10), at: Date.now() }; save(); } else ui.newsErr = true;
+  if (fresh.length) { S.news = { items: items.slice(0, FEEDS.length * 10), at: Date.now() }; save(); } else ui.newsErr = true;
   ui.newsLoading = false; render();
 }
 
