@@ -1,4 +1,4 @@
-# Planner — Ray's life app
+# Planner — Rey's life app
 
 A personal web app with six sections: **Planner, Tasks, Work, Gym, School, News**.
 Everything you add is saved in the browser on the device you use it on.

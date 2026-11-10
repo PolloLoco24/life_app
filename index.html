@@ -189,7 +189,7 @@ function timeAgo(iso) {
 /* ---------- saved data ---------- */
 function defaults() {
   return {
-    name: 'Ray',
+    name: 'Rey',
     tasks: [],
     shifts: {},
     school: { term: 'WGU · Term 5', termEnd: '2027-04-30', courses: [
@@ -209,6 +209,7 @@ function load() {
 }
 let S = load();
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+if (S.name === 'Ray') { S.name = 'Rey'; save(); }
 
 /* ---------- screen state (not saved) ---------- */
 const ui = {
@@ -259,8 +260,6 @@ function planner() {
   const sel = ui.plannerSel || t;
   const now = new Date();
   const pm = ui.plannerMonth || { y: now.getFullYear(), m: now.getMonth() };
-  const hr = now.getHours();
-  const greet = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
   const items = itemsOn(sel, ui.filter);
   const f = ui.filter;
   const fbStyle = f !== 'all' ? `background:${CATS[f].fg};color:#fff` : ui.filterOpen ? 'background:#202124;color:#fff' : '';
@@ -285,7 +284,7 @@ function planner() {
       <button type="button" class="btn soft" data-a="goToday">Back to today</button></div>`;
   }
   return `<div class="scroll">
-    <header class="head"><div><div class="sub">${now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</div><h1>${greet}, ${esc(S.name)}</h1></div><div class="avatar" aria-hidden="true">${esc(S.name[0] || 'R')}</div></header>
+    <header class="head"><div><h1>${now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</h1></div><div class="avatar" aria-hidden="true">${esc(S.name[0] || 'R')}</div></header>
     <section class="list" aria-live="polite"><h2>${dayLabel(sel)}</h2>
       ${items.length ? items.map(staticRow).join('') : `<div class="empty">Nothing planned${sel === t ? ' today' : ' for this day'}.</div>`}
     </section>
