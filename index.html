@@ -480,6 +480,32 @@ function schoolScreen() {
   </div>`;
 }
 
+const LOGOS = {
+  dbacks: ['logos/dbacks.svg', '#fff', 4], brewers: ['logos/brewers.svg', '#fff', 4],
+  wwe: ['logos/wwe.svg', '#202124', 7], aew: ['logos/aew.svg', '#202124', 4],
+  nintendo: ['logos/nintendo.svg', '#E60012', 2], playstation: ['logos/playstation.svg', '#fff', 6]
+};
+const LOGO_RULES = {
+  wrestling: [['wwe', /\bWWE\b|\bRaw\b|SmackDown|\bNXT\b|WrestleMania|Survivor Series|Royal Rumble|SummerSlam|Crown Jewel/],
+              ['aew', /\bAEW\b|Dynamite|Blood & Guts|Full Gear|Double or Nothing|Forbidden Door/],
+              ['other', /\b(TNA|MLW|GCW|NJPW|ROH|NWA|AAA|CMLL|Stardom)\b|Indies|Lucha/]],
+  games: [['nintendo', /Nintendo|Switch 2|Zelda|Mario|Pok[eé]mon|Yoshi|Kirby|Metroid|Donkey Kong|Splatoon|Animal Crossing|Smash Bros/i],
+          ['playstation', /PlayStation|\bPS[45]\b|PS Plus|DualSense|\bSony\b/i]]
+};
+// The brand named first in the headline wins; otherwise fall back to the site's own tags.
+// Games tags naming several platforms usually mean a multi-platform story, so those get no logo.
+// 'other' marks a non-WWE/AEW promotion named first, which also means no logo.
+function newsLogo(n) { const k = pickLogo(n); return k === 'other' ? null : k; }
+function pickLogo(n) {
+  if (n.cat === 'baseball') return n.source.startsWith('Brewers') ? 'brewers' : 'dbacks';
+  const rules = LOGO_RULES[n.cat] || [];
+  let best = null, at = Infinity;
+  rules.forEach(([k, re]) => { const i = n.title.search(re); if (i > -1 && i < at) { at = i; best = k; } });
+  if (best) return best;
+  const found = [];
+  (n.tags || []).forEach(t => rules.forEach(([k, re]) => { if (re.test(t) && !found.includes(k)) found.push(k); }));
+  return n.cat === 'games' && found.length > 1 ? null : found[0] || null;
+}
 function newsScreen() {
   const tab = ui.newsTab;
   const items = [], seen = new Map();
@@ -492,7 +518,8 @@ function newsScreen() {
   const CHIP = { wrestling: ['WWE/AEW', 'background:#FEEFE3;color:#B45309'], games: ['GAMES', 'background:#E8F0FE;color:#1A73E8'], baseball: ['MLB', 'background:#E6F4EA;color:#188038'] };
   let body;
   if (items.length) body = items.slice(0, 30).map(n => `<a class="row" href="${esc(n.link)}" target="_blank" rel="noopener">
-      <div class="chip" style="${(CHIP[n.cat] || CHIP.games)[1]}">${(CHIP[n.cat] || CHIP.games)[0]}</div>
+      ${(lg => lg ? `<div class="chip" style="background:${lg[1]}!important;padding:${lg[2]}px;box-shadow:inset 0 0 0 1px #E8EAED"><img src="${lg[0]}" alt="" style="width:100%;height:100%;object-fit:contain"></div>`
+        : `<div class="chip" style="${(CHIP[n.cat] || CHIP.games)[1]}">${(CHIP[n.cat] || CHIP.games)[0]}</div>`)(LOGOS[newsLogo(n)])}
       <div class="rt"><b style="line-height:1.3">${esc(n.title)}</b><small>${esc(n.source)}${n.date ? ' · ' + timeAgo(n.date) : ''}</small></div></a>`).join('');
   else if (ui.newsLoading) body = '<div class="empty">Loading headlines…</div>';
   else body = `<div class="empty">${ui.newsErr ? 'Couldn’t load headlines right now. You can open the sites directly:' : 'No headlines yet.'}</div>
@@ -518,7 +545,8 @@ async function loadNews(force) {
       .then(r => r.json())
       .then(j => (j.status === 'ok' ? j.items : []).slice(0, 10).map(it => {
         const d = document.createElement('textarea'); d.innerHTML = it.title || '';
-        return { cat: f.cat, source: f.source, title: d.value, link: it.link, date: it.pubDate || '' };
+        const tags = (Array.isArray(it.categories) ? it.categories : []).filter(c => typeof c === 'string').slice(0, 10);
+        return { cat: f.cat, source: f.source, title: d.value, link: it.link, date: it.pubDate || '', tags };
       }))));
   const items = results.filter(r => r.status === 'fulfilled').flatMap(r => r.value).filter(i => i.title && /^https?:/.test(i.link || ''));
   items.sort((a, b) => new Date((b.date || '').replace(' ', 'T')) - new Date((a.date || '').replace(' ', 'T')));
