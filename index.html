@@ -124,13 +124,12 @@ const PLANS = {
   legs: { focus: 'Quads · Hamstrings · Calves', list: [['Squats', '4 × 6–8'], ['Romanian deadlifts', '3 × 8–10'], ['Leg press', '3 × 12'], ['Walking lunges', '3 × 10 each'], ['Calf raises', '4 × 15']] }
 };
 const SECTIONS = {
-  planner: { title: 'Planner', accent: '#202124', soft: '#E8EAED', btn: '#202124', ink: '#fff',
-    glow: 'radial-gradient(60% 260px at 8% 0%, rgba(66,133,244,.30), rgba(66,133,244,0) 70%), radial-gradient(60% 260px at 38% 0%, rgba(234,67,53,.24), rgba(234,67,53,0) 70%), radial-gradient(60% 260px at 64% 0%, rgba(251,188,5,.30), rgba(251,188,5,0) 70%), radial-gradient(60% 260px at 94% 0%, rgba(52,168,83,.28), rgba(52,168,83,0) 70%)' },
-  tasks:  { title: 'Tasks',  accent: '#B06000', soft: '#FEF7E0', btn: '#FBBC05', ink: '#202124', rgb: '251,188,5', a: .36 },
-  work:   { title: 'Work',   accent: '#188038', soft: '#E6F4EA', btn: '#188038', ink: '#fff', rgb: '52,168,83', a: .30 },
-  gym:    { title: 'Gym',    accent: '#D93025', soft: '#FCE8E6', btn: '#D93025', ink: '#fff', rgb: '234,67,53', a: .28 },
-  school: { title: 'School', accent: '#1A73E8', soft: '#E8F0FE', btn: '#1A73E8', ink: '#fff', rgb: '66,133,244', a: .30 },
-  news:   { title: 'News',   accent: '#B45309', soft: '#FEEFE3', btn: '#FA7B17', ink: '#202124', rgb: '250,123,23', a: .30 }
+  planner: { title: 'Planner', accent: '#202124', soft: '#E8EAED', btn: '#202124', ink: '#fff' },
+  tasks:  { title: 'Tasks',  accent: '#B06000', soft: '#FEF7E0', btn: '#FBBC05', ink: '#202124' },
+  work:   { title: 'Work',   accent: '#188038', soft: '#E6F4EA', btn: '#188038', ink: '#fff' },
+  gym:    { title: 'Gym',    accent: '#D93025', soft: '#FCE8E6', btn: '#D93025', ink: '#fff' },
+  school: { title: 'School', accent: '#1A73E8', soft: '#E8F0FE', btn: '#1A73E8', ink: '#fff' },
+  news:   { title: 'News',   accent: '#B45309', soft: '#FEEFE3', btn: '#FA7B17', ink: '#202124' }
 };
 const TAB_ORDER = ['planner', 'tasks', 'work', 'news', 'gym', 'school'];
 const NAV_ICONS = {
@@ -726,7 +725,6 @@ function render() {
   const keepScroll = render._route === r ? (app.querySelector('.scroll') || {}).scrollTop : 0;
   app.style.setProperty('--accent', sec.accent); app.style.setProperty('--soft', sec.soft);
   app.style.setProperty('--btn', sec.btn); app.style.setProperty('--btnInk', sec.ink);
-  app.style.background = (sec.glow || `radial-gradient(130% 300px at 50% 0%, rgba(${sec.rgb},${sec.a}), rgba(${sec.rgb},0) 75%)`) + ', #F1F3F4';
   document.title = sec.title;
   const screen = { planner, tasks: tasksScreen, work: workScreen, gym: gymScreen, school: schoolScreen, news: newsScreen }[r]();
   const oldPill = app.querySelector('nav.tabs .glide');
