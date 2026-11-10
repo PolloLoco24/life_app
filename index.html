@@ -337,8 +337,8 @@ function tasksScreen() {
         <button type="button" class="hit" data-a="toggleTask" data-v="${x.id}" aria-pressed="${!!x.done}">${chip(x.cat)}<div class="rt"><b>${esc(x.text)}</b><small>${CATS[x.cat].label}${x.workout ? ' · ' + WK[x.workout] : ''}</small></div><div class="check">${x.done ? CHECK : ''}</div></button>
         <button type="button" class="del" data-a="delTask" data-v="${x.id}" aria-label="Delete ${esc(x.text)}">${svg('<path d="M6 6l12 12M18 6L6 18"/>', 16)}</button>
       </div>`).join('')}</section>`).join('') : (ui.sheet ? '' : '<div class="empty">Nothing coming up. Tap “+ New task” to plan something.</div>')}
-  </div>
-  ${ui.sheet ? '' : `<div class="bottom"><button type="button" class="btn dark" data-a="openSheet">+ New task</button></div>`}`;
+    ${ui.sheet ? '' : `<button type="button" class="btn soft" data-a="openSheet">+ New task</button>`}
+  </div>`;
 }
 
 function weekStartOf(s) { const d = parse(s); d.setDate(d.getDate() - d.getDay()); return ymd(d); }
@@ -531,7 +531,7 @@ const A = {
   pickMonth: v => { ui.plannerMonth = { y: ui.pickY, m: Number(v) }; ui.monthOpen = false; ui.plannerSel = ui.pickY + '-' + pad(Number(v) + 1) + '-01'; },
   goToday: () => { ui.plannerMonth = null; ui.plannerSel = null; ui.monthOpen = false; },
 
-  openSheet: () => { ui.sheet = true; ui.pickDate = todayStr(); ui.pickMonth = null; ui.workout = null; setTimeout(() => { const el = document.getElementById('draft'); if (el) el.focus(); }, 50); },
+  openSheet: () => { ui.sheet = true; ui.pickDate = todayStr(); ui.pickMonth = null; ui.workout = null; setTimeout(() => { const sc = document.querySelector('.scroll'); if (sc) sc.scrollTop = 0; const el = document.getElementById('draft'); if (el) el.focus(); }, 50); },
   closeSheet: () => { ui.sheet = false; },
   setTag: v => { ui.tag = v; if (v !== 'gym') ui.workout = null; },
   setWorkout: v => { ui.workout = v; },
