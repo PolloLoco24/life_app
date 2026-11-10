@@ -1,5 +1,5 @@
 // Lets the app open without internet. Bump VERSION when you change index.html.
-const VERSION = 'planner-v6';
+const VERSION = 'planner-v7';
 const FILES = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', e => {

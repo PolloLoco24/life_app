@@ -32,7 +32,6 @@ nav.tabs .glide{position:absolute;top:6px;bottom:6px;left:6px;width:calc((100% -
 h1{margin:0;font-size:30px;font-weight:800;line-height:1.15}
 h2{margin:0;font-size:18px;font-weight:800}
 .stat{font-size:14px;font-weight:800;color:var(--accent);padding-bottom:6px;white-space:nowrap}
-.avatar{width:48px;height:48px;border-radius:24px;background:#1A73E8;color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;flex-shrink:0}
 .card{background:#fff;border-radius:22px;padding:16px;box-shadow:0 2px 8px rgba(60,64,67,.06);display:flex;flex-direction:column;gap:12px}
 .list{display:flex;flex-direction:column;gap:10px}
 .row{background:#fff;border-radius:18px;padding:12px 16px;min-height:64px;display:flex;align-items:center;gap:14px;box-shadow:0 2px 8px rgba(60,64,67,.06);border:2px solid transparent;width:100%;text-align:left;font:inherit;color:inherit}
@@ -284,7 +283,7 @@ function planner() {
       <button type="button" class="btn soft" data-a="goToday">Back to today</button></div>`;
   }
   return `<div class="scroll">
-    <header class="head"><div><h1>${now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</h1></div><div class="avatar" aria-hidden="true">${esc(S.name[0] || 'R')}</div></header>
+    <header class="head"><div><h1>${now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</h1></div></header>
     <section class="list" aria-live="polite"><h2>${dayLabel(sel)}</h2>
       ${items.length ? items.map(staticRow).join('') : `<div class="empty">Nothing planned${sel === t ? ' today' : ' for this day'}.</div>`}
     </section>
