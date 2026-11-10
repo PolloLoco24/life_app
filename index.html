@@ -521,7 +521,7 @@ function newsScreen() {
     else if (!prev.source.split(' & ').includes(n.source)) prev.source += ' & ' + n.source;
   });
   const tabs = [['all', 'All'], ['wrestling', 'Wrestling'], ['games', 'Games'], ['baseball', 'Baseball']];
-  const CHIP = { wrestling: ['WWE/AEW', 'background:#FEEFE3;color:#B45309'], games: ['GAMES', 'background:#E8F0FE;color:#1A73E8'], baseball: ['MLB', 'background:#E6F4EA;color:#188038'] };
+  const CHIP = { wrestling: ['WREST','background:#FEEFE3;color:#B45309'], games: ['GAMES', 'background:#E8F0FE;color:#1A73E8'], baseball: ['MLB', 'background:#E6F4EA;color:#188038'] };
   let body;
   if (items.length) body = items.map(n => `<a class="row" href="${esc(n.link)}" target="_blank" rel="noopener">
       ${(lg => lg ? `<div class="chip" style="background:${lg[1]}!important;padding:${lg[2]}px;box-shadow:inset 0 0 0 1px #E8EAED"><img src="${lg[0]}" alt="" style="width:100%;height:100%;object-fit:contain"></div>`
