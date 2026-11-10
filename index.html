@@ -147,7 +147,9 @@ const FEEDS = [
   { cat: 'wrestling', source: 'Wrestling Inc', url: 'https://www.wrestlinginc.com/feed/', site: 'https://www.wrestlinginc.com' },
   { cat: 'games', source: 'IGN', url: 'https://feeds.feedburner.com/ign/all', site: 'https://www.ign.com' },
   { cat: 'games', source: 'GameSpot', url: 'https://www.gamespot.com/feeds/mashup/', site: 'https://www.gamespot.com' },
-  { cat: 'games', source: 'Polygon', url: 'https://www.polygon.com/rss/index.xml', site: 'https://www.polygon.com' }
+  { cat: 'games', source: 'Polygon', url: 'https://www.polygon.com/rss/index.xml', site: 'https://www.polygon.com' },
+  { cat: 'baseball', source: 'D-backs', url: 'https://www.mlb.com/dbacks/feeds/news/rss.xml', site: 'https://www.mlb.com/dbacks' },
+  { cat: 'baseball', source: 'Brewers', url: 'https://www.mlb.com/brewers/feeds/news/rss.xml', site: 'https://www.mlb.com/brewers' }
 ];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -481,18 +483,19 @@ function schoolScreen() {
 function newsScreen() {
   const tab = ui.newsTab;
   const items = S.news.items.filter(n => tab === 'all' || n.cat === tab);
-  const tabs = [['all', 'All'], ['wrestling', 'Wrestling'], ['games', 'Games']];
+  const tabs = [['all', 'All'], ['wrestling', 'Wrestling'], ['games', 'Games'], ['baseball', 'Baseball']];
+  const CHIP = { wrestling: ['WWE/AEW', 'background:#FEEFE3;color:#B45309'], games: ['GAMES', 'background:#E8F0FE;color:#1A73E8'], baseball: ['MLB', 'background:#E6F4EA;color:#188038'] };
   let body;
   if (items.length) body = items.slice(0, 30).map(n => `<a class="row" href="${esc(n.link)}" target="_blank" rel="noopener">
-      <div class="chip" style="${n.cat === 'wrestling' ? 'background:#FEEFE3;color:#B45309' : 'background:#E8F0FE;color:#1A73E8'}">${n.cat === 'wrestling' ? 'WWE/AEW' : 'GAMES'}</div>
+      <div class="chip" style="${(CHIP[n.cat] || CHIP.games)[1]}">${(CHIP[n.cat] || CHIP.games)[0]}</div>
       <div class="rt"><b style="line-height:1.3">${esc(n.title)}</b><small>${esc(n.source)}${n.date ? ' · ' + timeAgo(n.date) : ''}</small></div></a>`).join('');
   else if (ui.newsLoading) body = '<div class="empty">Loading headlines…</div>';
   else body = `<div class="empty">${ui.newsErr ? 'Couldn’t load headlines right now. You can open the sites directly:' : 'No headlines yet.'}</div>
     <div class="wrap">${FEEDS.filter(f => tab === 'all' || f.cat === tab).map(f => `<a class="tag" style="display:flex;align-items:center;text-decoration:none" href="${f.site}" target="_blank" rel="noopener">${f.source}</a>`).join('')}</div>`;
   return `<div class="scroll">
-    <header class="head"><div><div class="sub">${S.news.at ? 'Updated ' + timeAgo(new Date(S.news.at).toISOString()) : 'Wrestling · Games'}</div><h1>News</h1></div>
+    <header class="head"><div><div class="sub">${S.news.at ? 'Updated ' + timeAgo(new Date(S.news.at).toISOString()) : 'Wrestling · Games · Baseball'}</div><h1>News</h1></div>
       <button type="button" class="iconbtn" style="background:#fff;margin-bottom:2px" data-a="refreshNews" aria-label="Refresh headlines">${svg('<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>', 18)}</button></header>
-    <div class="seg" style="grid-template-columns:repeat(3,minmax(0,1fr))">${tabs.map(([id, l]) => `<button type="button" class="${tab === id ? 'on' : ''}" data-a="newsTab" data-v="${id}" aria-pressed="${tab === id}">${l}</button>`).join('')}</div>
+    <div class="seg" style="grid-template-columns:repeat(${tabs.length},minmax(0,1fr))">${tabs.map(([id, l]) => `<button type="button" class="${tab === id ? 'on' : ''}" data-a="newsTab" data-v="${id}" aria-pressed="${tab === id}">${l}</button>`).join('')}</div>
     <section class="list">${body}</section>
   </div>`;
 }
@@ -500,7 +503,8 @@ function newsScreen() {
 /* ---------- news loading ---------- */
 async function loadNews(force) {
   if (ui.newsLoading) return;
-  if (!force && S.news.items.length && Date.now() - S.news.at < 60 * 60 * 1000) return;
+  const haveCats = new Set(S.news.items.map(n => n.cat));
+  if (!force && S.news.items.length && Date.now() - S.news.at < 60 * 60 * 1000 && FEEDS.every(f => haveCats.has(f.cat))) return;
   if (!force && ui.newsTried && Date.now() - ui.newsTried < 10 * 60 * 1000) return;
   ui.newsTried = Date.now();
   ui.newsLoading = true; ui.newsErr = false; render();
@@ -513,7 +517,7 @@ async function loadNews(force) {
       }))));
   const items = results.filter(r => r.status === 'fulfilled').flatMap(r => r.value).filter(i => i.title && /^https?:/.test(i.link || ''));
   items.sort((a, b) => new Date((b.date || '').replace(' ', 'T')) - new Date((a.date || '').replace(' ', 'T')));
-  if (items.length) { S.news = { items: items.slice(0, 60), at: Date.now() }; save(); } else ui.newsErr = true;
+  if (items.length) { S.news = { items: items.slice(0, FEEDS.length * 10), at: Date.now() }; save(); } else ui.newsErr = true;
   ui.newsLoading = false; render();
 }
 
