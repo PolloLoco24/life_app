@@ -221,6 +221,7 @@ const ui = {
   split: null, gymView: 'workout', gymOpen: null, gymDraft: '', gymStart: '', exName: '', addingEx: false, newEx: '', chartEx: null,
   schoolOpen: null, addingClass: false, newCode: '', newName: '',
   newsTab: 'all', newsLoading: false, newsErr: false,
+  backupOpen: false, backupMsg: null, restoreText: '',
   undo: null
 };
 
@@ -298,7 +299,37 @@ function planner() {
       ${panel}
       ${calendar(pm.y, pm.m, { sel, action: 'planSel', dots: dotsFor })}
     </section>
+    ${ui.backupOpen ? backupCard() : `<button type="button" class="btn soft" data-a="backupOpen">Backup &amp; restore</button>`}
   </div>`;
+}
+function backupCard() {
+  const msg = ui.backupMsg;
+  return `<section class="card" aria-label="Backup and restore">
+    <div class="calhead"><h2 style="font-size:16px">Backup &amp; restore</h2><button type="button" class="iconbtn" data-a="backupClose" aria-label="Close">${svg('<path d="M6 6l12 12M18 6L6 18"/>', 16)}</button></div>
+    <div class="note">Your tasks, shifts, gym and school data live only on this device. Save a backup before removing the app or switching phones.</div>
+    <div style="display:flex;gap:8px"><button type="button" class="btn main grow" data-a="backupSave">Save backup file</button><button type="button" class="btn soft" data-a="backupCopy">Copy</button></div>
+    <div class="lbl" style="margin-top:6px">Restore</div>
+    <label class="btn soft" for="rfile" style="display:flex;align-items:center;justify-content:center;cursor:pointer">Choose backup file</label>
+    <input id="rfile" class="sr" type="file" accept=".json,application/json,text/plain" data-change="restoreFile">
+    <label class="sr" for="rtext">Paste a copied backup</label>
+    <textarea id="rtext" class="field" placeholder="…or paste a copied backup here" data-bind="restoreText" style="min-height:80px;padding:10px 14px;resize:vertical">${esc(ui.restoreText)}</textarea>
+    <button type="button" class="btn soft" data-a="restorePaste">Restore pasted backup</button>
+    ${msg ? `<div class="note" role="status" style="color:${msg.ok ? '#188038' : '#D93025'}">${esc(msg.text)}</div>` : ''}
+  </section>`;
+}
+// News is left out: it's a cache that reloads itself.
+function backupJson() { return JSON.stringify({ app: 'lifeapp-backup', version: 1, savedAt: new Date().toISOString(), data: { ...S, news: { items: [], at: 0 } } }); }
+function restoreBackup(text) {
+  let b;
+  try { b = JSON.parse(text); } catch (e) { b = null; }
+  const d = b && b.app === 'lifeapp-backup' && b.data;
+  if (!d || !Array.isArray(d.tasks) || typeof d.shifts !== 'object' || !d.school || !Array.isArray(d.school.courses) || typeof d.weights !== 'object') {
+    ui.backupMsg = { ok: false, text: 'That doesn’t look like a Planner backup, so nothing was changed.' }; return;
+  }
+  const when = new Date(b.savedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  if (!confirm(`Replace everything in Planner with the backup from ${when}? This can’t be undone.`)) { ui.backupMsg = { ok: false, text: 'Restore cancelled. Nothing was changed.' }; return; }
+  S = Object.assign(defaults(), d, { news: S.news }); save();
+  ui.restoreText = ''; ui.backupMsg = { ok: true, text: `Restored the backup from ${when}.` };
 }
 
 function tasksScreen() {
@@ -657,11 +688,35 @@ const A = {
   addClass: () => { if (!ui.newCode.trim() && !ui.newName.trim()) return; S.school.courses.push({ code: ui.newCode.trim().toUpperCase() || '—', name: ui.newName.trim() || 'New class', pct: 0 }); ui.addingClass = false; save(); },
 
   newsTab: v => { ui.newsTab = v; },
-  refreshNews: () => { loadNews(true); }
+  refreshNews: () => { loadNews(true); },
+
+  backupOpen: () => { ui.backupOpen = true; ui.backupMsg = null; },
+  backupClose: () => { ui.backupOpen = false; ui.backupMsg = null; },
+  backupSave: () => {
+    const name = `planner-backup-${todayStr()}.json`;
+    const file = new File([backupJson()], name, { type: 'application/json' });
+    const done = (ok, text) => { ui.backupMsg = { ok, text }; render(); };
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file], title: 'Planner backup' })
+        .then(() => done(true, 'Backup saved. Keep the file somewhere safe, like Files or iCloud Drive.'))
+        .catch(e => done(false, e && e.name === 'AbortError' ? 'Backup not saved.' : 'Couldn’t share the backup. Try Copy instead.'));
+    } else {
+      const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name;
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      ui.backupMsg = { ok: true, text: `Downloaded ${name}.` };
+    }
+  },
+  backupCopy: () => {
+    navigator.clipboard.writeText(backupJson())
+      .then(() => { ui.backupMsg = { ok: true, text: 'Backup copied. Paste it somewhere safe, like a note in Notes.' }; render(); })
+      .catch(() => { ui.backupMsg = { ok: false, text: 'Couldn’t copy. Try Save backup file instead.' }; render(); });
+  },
+  restorePaste: () => { if (!ui.restoreText.trim()) { ui.backupMsg = { ok: false, text: 'Paste a backup into the box first.' }; return; } restoreBackup(ui.restoreText); }
 };
 const CHANGE = {
   daysLeft: el => { const n = Math.max(0, parseInt(el.value, 10) || 0); S.school.termEnd = addDays(todayStr(), n); save(); },
-  classPct: el => { S.school.courses[el.dataset.v].pct = Number(el.value); save(); }
+  classPct: el => { S.school.courses[el.dataset.v].pct = Number(el.value); save(); },
+  restoreFile: el => { const f = el.files && el.files[0]; el.value = ''; if (f) f.text().then(t => { restoreBackup(t); render(); }); }
 };
 
 /* ---------- render ---------- */
