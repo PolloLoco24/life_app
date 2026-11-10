@@ -705,7 +705,15 @@ document.addEventListener('keydown', e => {
 window.addEventListener('hashchange', () => { ui.filterOpen = ui.monthOpen = false; render(); window.scrollTo(0, 0); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
 render();
-if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  // Check for a new version whenever the app comes back to the front, and reload once when it takes over.
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+  }).catch(() => {});
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloading) { reloading = true; location.reload(); } });
+}
 </script>
 </body>
 </html>
