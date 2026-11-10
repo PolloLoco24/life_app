@@ -200,6 +200,7 @@ function defaults() {
     name: 'Rey',
     tasks: [],
     tags: [],
+    taskRange: 'month',
     shifts: {},
     school: { term: 'WGU · Term 5', termEnd: '2027-04-30', courses: [
       { code: 'D281', name: 'Linux Foundations', pct: 0 },
@@ -223,7 +224,7 @@ if (S.name === 'Ray') { S.name = 'Rey'; save(); }
 /* ---------- screen state (not saved) ---------- */
 const ui = {
   plannerSel: null, plannerMonth: null, filters: [], filterOpen: false, monthOpen: false, pickY: null,
-  taskFilters: [], taskFilterOpen: false, tagsOpen: false, tagForm: null, tagMsg: '',
+  taskFilters: [], taskFilterOpen: false, rangeOpen: false, tagsOpen: false, tagForm: null, tagMsg: '',
   sheet: false, editing: null, draft: '', tag: 'tasks', workout: null, emoji: null, repeat: null, pickDate: null, pickMonth: null,
   weekStart: null, workOpen: null, workStart: '09:00', workEnd: '17:00',
   split: null, gymView: 'workout', gymOpen: null, gymDraft: '', gymStart: '', exName: '', addingEx: false, newEx: '', chartEx: null,
@@ -293,6 +294,14 @@ function filterPills(list, action, onPage) {
     const st = !on ? off : c ?`background:${c.fg};border-color:${c.fg};color:var(--onfg)` : INVERT + ';border-color:var(--text)';
     return `<button type="button" class="pill" style="padding:0 14px;${st}" data-a="${action}" data-v="${id}" aria-pressed="${on}">${c ? `<span class="dot" style="background:${on ? 'var(--onfg)' : c.fg}"></span>${esc(c.label)}` : 'All'}</button>`;
   }).join('') + '</div>';
+}
+const RANGES = { day: 'Today', week: '7 days', month: 'Month', all: 'All' };
+// Last date a Tasks range shows. "month" runs to the same date next month (Jan 31 stops at Feb 28/29).
+function rangeEnd(t, r) {
+  if (r === 'day') return t;
+  if (r === 'week') return addDays(t, 6);
+  if (r === 'month') { const d = parse(t), last = new Date(d.getFullYear(), d.getMonth() + 2, 0).getDate(); return ymd(new Date(d.getFullYear(), d.getMonth() + 1, Math.min(d.getDate(), last))); }
+  return '9999-12-31';
 }
 // Toggles a tag in a filter list; "all", or every tag selected, means no filter.
 function toggledList(list, v) {
@@ -438,8 +447,9 @@ function tasksScreen() {
   // (Last night's shift stays listed until it actually ends, e.g. a 10pm–6am shift after midnight.)
   const shifts = shown('work', ui.taskFilters) ? Object.keys(S.shifts)
     .filter(ds => ds >= t || (ds === addDays(t, -1) && !shiftDone(ds, S.shifts[ds]))).map(ds => ({ shift: S.shifts[ds], date: ds })) : [];
+  const range = RANGES[S.taskRange] ? S.taskRange : 'month', end = rangeEnd(t, range);
   const upcoming = S.tasks.map(x => ({ x, date: nextOn(x, t) })).filter(e => e.date && shown(e.x.cat, ui.taskFilters)).concat(shifts)
-    .sort((a, b) => a.date.localeCompare(b.date) || !!b.shift - !!a.shift || a.x.created - b.x.created);
+    .filter(e => e.date <= end).sort((a, b) => a.date.localeCompare(b.date) || !!b.shift - !!a.shift || a.x.created - b.x.created);
   const groups = [];
   upcoming.forEach(e => { const g = groups[groups.length - 1]; if (g && g.date === e.date) g.items.push(e); else groups.push({ date: e.date, items: [e] }); });
   let sheet = '';
@@ -481,7 +491,8 @@ function tasksScreen() {
   }
   return `<div class="scroll">
     <header class="head"><div><div class="sub">${dayLabel(t)}, ${shortDate(t)}</div><h1>Tasks</h1></div></header>
-    <div style="display:flex;gap:8px;align-items:center">${ui.sheet ? '<div class="grow"></div>' : `<button type="button" class="btn soft grow" data-a="openSheet">+ New task</button>`}${filterBtn(ui.taskFilters, ui.taskFilterOpen, 'toggleTaskFilter')}</div>
+    <div style="display:flex;gap:8px;align-items:center">${ui.sheet ? '<div class="grow"></div>' : `<button type="button" class="btn soft grow" data-a="openSheet">+ New task</button>`}<button type="button" class="filterbtn" style="${ui.rangeOpen ? INVERT : ''}" data-a="toggleRange" aria-expanded="${ui.rangeOpen}" aria-label="Show: ${RANGES[range]}">${svg(NAV_ICONS.work, 16)}${RANGES[range]}</button>${filterBtn(ui.taskFilters, ui.taskFilterOpen, 'toggleTaskFilter')}</div>
+    ${ui.rangeOpen ? `<div class="wrap">${Object.entries(RANGES).map(([k, l]) => `<button type="button" class="pill" style="padding:0 14px;${k === range ? INVERT + ';border-color:var(--text)' : 'background:var(--surface);border-color:var(--surface)'}" data-a="setRange" data-v="${k}" aria-pressed="${k === range}">${k === 'month' ? 'Month · to ' + shortDate(rangeEnd(t, 'month')) : l}</button>`).join('')}</div>` : ''}
     ${ui.taskFilterOpen ? filterPills(ui.taskFilters, 'setTaskFilter', true) : ''}
     ${sheet}
     ${groups.length ? groups.map(g => `<section class="list"><h2>${dayLabel(g.date)}</h2>${g.items.map(({ x, date, shift }) => { if (shift) return shiftRow(date, shift); const done = isDone(x, date); return `
@@ -489,8 +500,13 @@ function tasksScreen() {
         <button type="button" class="hit" data-a="toggleTask" data-v="${x.id}|${date}" aria-pressed="${done}">${chip(x.cat, x.emoji)}<div class="rt"><b>${esc(x.text)}</b><small>${esc(taskSub(x))}</small></div><div class="check">${done ? CHECK : ''}</div></button>
         <button type="button" class="del" style="margin-right:-4px" data-a="editTask" data-v="${x.id}" aria-label="Edit ${esc(x.text)}">${svg('<path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-4-4L4 16z"/>', 16)}</button>
         <button type="button" class="del" data-a="delTask" data-v="${x.id}" aria-label="Delete ${esc(x.text)}">${svg('<path d="M6 6l12 12M18 6L6 18"/>', 16)}</button>
-      </div>`; }).join('')}</section>`).join('') : ui.sheet ? '' : `<div class="empty">${ui.taskFilters.length ? 'No upcoming tasks with these tags.' : 'Nothing coming up. Tap “+ New task” to plan something.'}</div>`}
+      </div>`; }).join('')}</section>`).join('') : ui.sheet ? '' : `<div class="empty">${emptyTasksMsg(range, end)}</div>`}
   </div>`;
+}
+function emptyTasksMsg(range, end) {
+  const when = { day: 'today', week: 'in the next 7 days', month: 'through ' + shortDate(end), all: '' }[range];
+  if (ui.taskFilters.length) return `No tasks with these tags ${when || 'coming up'}.`;
+  return range === 'all' ? 'Nothing coming up. Tap “+ New task” to plan something.' : `Nothing planned ${when}.`;
 }
 // Not tappable; shows only a gold tick once the shift has ended. The spacers keep the tick lined up with task rows.
 function shiftRow(ds, sh) {
@@ -752,7 +768,9 @@ const A = {
   planSel: v => { ui.plannerSel = v; },
   toggleFilter: () => { ui.filterOpen = !ui.filterOpen; ui.monthOpen = false; },
   setFilter: v => { ui.filters = toggledList(ui.filters, v); },
-  toggleTaskFilter: () => { ui.taskFilterOpen = !ui.taskFilterOpen; },
+  toggleTaskFilter: () => { ui.taskFilterOpen = !ui.taskFilterOpen; ui.rangeOpen = false; },
+  toggleRange: () => { ui.rangeOpen = !ui.rangeOpen; ui.taskFilterOpen = false; },
+  setRange: v => { S.taskRange = v; save(); ui.rangeOpen = false; },
   setTaskFilter: v => { ui.taskFilters = toggledList(ui.taskFilters, v); },
 
   toggleTags: () => { ui.tagsOpen = !ui.tagsOpen; ui.tagForm = null; ui.tagMsg = ''; },
